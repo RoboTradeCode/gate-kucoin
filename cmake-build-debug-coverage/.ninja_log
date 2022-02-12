@@ -1,0 +1,12 @@
+# ninja log v5
+4	1119	1644163772306529170	CMakeFiles/main.dir/src/Uri.cpp.o	249250b34d3a8714
+1	3065	1644163774250531672	CMakeFiles/main.dir/src/Publisher.cpp.o	f998b4c455739d6a
+3	5126	1644163776310534268	CMakeFiles/main.dir/src/utils.cpp.o	ece3342f1ec5d15b
+9	5047	1644620571989348439	CMakeFiles/main.dir/src/KucoinWS.cpp.o	186134d94b1b0c81
+10	24331	1644613462943857786	CMakeFiles/main.dir/src/WSSession.cpp.o	18cb983d298a2737
+10	10426	1644621953974458124	CMakeFiles/main.dir/main.cpp.o	76320789d8e085fc
+13	11799	1644619129794617040	CMakeFiles/main.dir/src/HTTPSession.cpp.o	6c0e2f01d6cb9c7d
+10426	11587	1644621955138452422	main	360c87d5d4e64f8c
+1	3387	1644163774574532083	CMakeFiles/main.dir/src/Subscriber.cpp.o	77bf0a44f82c1593
+5	731	1644163771918528666	CMakeFiles/main.dir/src/kucoin_structures.cpp.o	556579532704852c
+13	5939	1644619123886627840	CMakeFiles/main.dir/src/KucoinREST.cpp.o	2469d27b00377789
