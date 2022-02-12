@@ -1,5 +1,4 @@
 #include <boost/thread/thread.hpp>
-#include <boost/log/trivial.hpp>
 #include <boost/json/src.hpp>
 #include <boost/algorithm/string.hpp>
 #include <algorithm>
@@ -33,6 +32,8 @@ void sigint_handler(int);
 std::string formulate_log_message(char type, char error_source, int code,
                            std::basic_string<char, std::char_traits<char>, std::allocator<char>> message);
 
+std::string format_price_precision(std::basic_string<char> price);
+
 std::string api_key{};
 std::string passphrase{};
 std::string secret_key{};
@@ -52,8 +53,6 @@ std::shared_ptr<Subscriber> core_channel;
 // векторы, хранящие id ордеров
 std::vector<std::string> buy_orders;
 std::vector<std::string> sell_orders;
-
-
 
 int main()
 {
@@ -336,7 +335,7 @@ void orders_aeron_handler(const std::string& message)
             object.at("s") == "BUY" ? "buy" : "sell",
             object.at("t") == "LIMIT" ? "limit" : "market",
             std::string(object.at("q").as_string()),
-            std::string(object.at("p").as_string())
+            format_price_precision(std::string(object.at("p").as_string()))
         );
 
         BOOST_LOG_TRIVIAL(debug) << "Sent request to create order (id" << id << ")";
@@ -356,10 +355,10 @@ void orders_aeron_handler(const std::string& message)
     {
         std::string id{};
 
-        if (object.at("s") == "BUY") {
+        if (object.at("s") == "BUY" && !buy_orders.empty()) {
             id = buy_orders.back();
             buy_orders.pop_back();
-        } else if (object.at("s") == "SELL") {
+        } else if (object.at("s") == "SELL" && !sell_orders.empty()) {
             id = sell_orders.back();
             sell_orders.pop_back();
         }
@@ -380,6 +379,11 @@ void orders_aeron_handler(const std::string& message)
     }
 }
 
+
+// Форматирует цену BTC, округляет до десятых
+std::string format_price_precision(std::string price) {
+    price.resize(7, '0');
+    return price;
 }
 
 void sigint_handler(int)
