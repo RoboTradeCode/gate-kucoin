@@ -1,3 +1,0 @@
-/home/qod/Projects/Research/C++/KucoinGateway/cmake-build-debug-coverage/CMakeFiles/rebuild_cache.dir
-/home/qod/Projects/Research/C++/KucoinGateway/cmake-build-debug-coverage/CMakeFiles/edit_cache.dir
-/home/qod/Projects/Research/C++/KucoinGateway/cmake-build-debug-coverage/CMakeFiles/main.dir
