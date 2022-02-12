@@ -15,10 +15,18 @@ struct gate_config{
         std::string name{};
     } exchange;
 
+
+
+
     struct{
         std::string api_key{};
         std::string secret_key{};
         std::string passphrase{};
+
+        struct {
+            std::string btc_account_id{};
+            std::string usdt_account_id{};
+        } ids;
     } account;
 
     struct {
@@ -57,6 +65,10 @@ struct gate_config{
         account.api_key = config["account"]["api_key"].value_or("");
         account.secret_key = config["account"]["secret_key"].value_or("");
         account.passphrase = config["account"]["passphrase"].value_or("");
+
+        account.ids.btc_account_id = config["account"]["btc_account_id"].value_or("");
+        account.ids.usdt_account_id = config["account"]["usdt_account_id"].value_or("");
+
 
         aeron.publishers.orderbook.channel = config["aeron"]["publishers"]["orderbook"][0].value_or("");
         aeron.publishers.orderbook.stream_id = config["aeron"]["publishers"]["orderbook"][1].value_or(0);

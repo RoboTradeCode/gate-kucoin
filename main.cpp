@@ -68,7 +68,8 @@ int main()
      * 5.2 Канал для получения ордербука
      * 6. Получение списка ордеров
      * 7. Отмена активных ордеров
-     * 8. Бесконечный цикл, в нём проверка сообщения от ядра
+     * 8. Получение текущего баланса аккаунта
+     * 9. Бесконечный цикл, в нём проверка сообщения от ядра
      * */
 
     using namespace std::literals::chrono_literals;
@@ -80,7 +81,8 @@ int main()
 
     // 0. Получение настроек конфигурации шлюза
     BOOST_LOG_TRIVIAL(info) << "Load configuration...";
-    gate_config config("kucoin_config.toml");
+    // Указать корректный путь до конфига. Здесь
+    gate_config config("../kucoin_config.toml");
 
     exchange_name = config.exchange.name;
     api_key = config.account.api_key;
@@ -148,13 +150,40 @@ int main()
     } else
         BOOST_LOG_TRIVIAL(info) << "No active orders";
 
+    // 8. Получаю текущий баланс аккаунта
+    auto btc_balance_json = kucoin_rest->get_balance(config.account.ids.btc_account_id);
+    auto btc_balance_object = json::parse(btc_balance_json).as_object();
+
+    auto usdt_balance_json = kucoin_rest->get_balance(config.account.ids.usdt_account_id);
+    auto usdt_balance_object = json::parse(usdt_balance_json).as_object();
+
+//    "{\"code\":\"200000\",\"data\":{\"currency\":\"BTC\",\"balance\":\"0.00209\",\"available\":\"0.00209\",\"holds\":\"0\"}}"
+    if (btc_balance_object.if_contains("code") && btc_balance_object.at("code") == "200000" &&
+        usdt_balance_object.if_contains("code") && usdt_balance_object.at("code") == "200000") {
+        auto balance = json::serialize(json::value{
+            {"B", json::array({
+                json::value{
+                        {"a", btc_balance_object.at("data").at("currency").as_string()},
+                        {"f", btc_balance_object.at("data").at("available").as_string()},
+                }, json::value {
+                        {"a", usdt_balance_object.at("data").at("currency").as_string()},
+                        {"f", usdt_balance_object.at("data").at("available").as_string()}
+                }
+            }
+            )}
+    });
+        balance_channel->offer(balance);
+        BOOST_LOG_TRIVIAL(trace) << "Sent balances to core: " << balance;
+    }
+
     // Обработчик прерываний, для выхода из цикла.
     signal(SIGINT, sigint_handler);
 
     auto last_ping_time = std::chrono::system_clock::now();
 
 
-    // 8. Основной цикл работы шлюза
+    // 9. Основной цикл работы шлюза
+
     /* Шаги работы основного цикла:
      * 1. Обработка сообщений, полученных по websocket
      * 2. Обработка ордеров, полученных от ядра
@@ -269,13 +298,14 @@ void balance_ws_handler(const std::string& message) {
         if (!object.at("data").at("total").as_string().empty() &&
             !object.at("data").at("currency").as_string().empty()) {
             auto balance = json::serialize(json::value{
-                    {"B", json::array({
-                                              json::value{
-                                                      "a", object.at("data").at("currency").as_string(),
-                                                      "f", object.at("data").at("total").as_string()
-                                              }
-                                      }
-                    )}
+                {"B", json::array(
+                    {
+                        json::value {
+                            {"a", object.at("data").at("currency").as_string()},
+                            {"f", object.at("data").at("total").as_string()}
+                        }
+                    }
+                )}
             });
             balance_channel->offer(balance);
             BOOST_LOG_TRIVIAL(trace) << "Sent balance to core: " << balance;
