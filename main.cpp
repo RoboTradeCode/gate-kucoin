@@ -4,6 +4,10 @@
 #include <boost/algorithm/string.hpp>
 #include <algorithm>
 
+#include <boost/log/core.hpp>
+#include <boost/log/trivial.hpp>
+#include <boost/log/expressions.hpp>
+
 #include "src/includes/KucoinWS.h"
 #include "src/includes/kucoin_structures.h"
 #include "src/includes/KucoinREST.h"
@@ -14,6 +18,7 @@
 #include "src/config/gate_config.h"
 
 namespace json = boost::json;
+namespace logging = boost::log;
 
 Bullet bullet_handler(const std::string&);
 
@@ -68,6 +73,10 @@ int main()
 
     using namespace std::literals::chrono_literals;
 
+    logging::core::get()->set_filter
+    (
+            logging::trivial::severity >= logging::trivial::debug
+    );
 
     // 0. Получение настроек конфигурации шлюза
     BOOST_LOG_TRIVIAL(info) << "Load configuration...";
@@ -248,7 +257,7 @@ void orderbook_ws_handler(const std::string& message)
 
 // Обработчик websocket, оформляет и отправляет сообщения с балансом по ассету в ядром
 void balance_ws_handler(const std::string& message) {
-    BOOST_LOG_TRIVIAL(trace) << "Received message in private ws_stream handler: " << message;
+    BOOST_LOG_TRIVIAL(debug) << "Received message of balance: " << message;
     auto object = json::parse(message).as_object();
 
     if (object.at("type").as_string() == "welcome" ||
@@ -284,7 +293,7 @@ void balance_ws_handler(const std::string& message) {
 // Обработчик сообщений из aeron на выставление и отмену ордеров (BTCUSDT)
 void orders_aeron_handler(const std::string& message)
 {
-    BOOST_LOG_TRIVIAL(trace) << "Received message in aeron handler: " << message;
+    BOOST_LOG_TRIVIAL(debug) << "Received message in aeron handler: " << message;
     auto object = json::parse(message).as_object();
     std::string result{};
 
@@ -300,8 +309,8 @@ void orders_aeron_handler(const std::string& message)
             std::string(object.at("p").as_string())
         );
 
-        BOOST_LOG_TRIVIAL(trace) << "Sent request to create order (id" << id << ")";
-        BOOST_LOG_TRIVIAL(trace) << "Result: " << result;
+        BOOST_LOG_TRIVIAL(debug) << "Sent request to create order (id" << id << ")";
+        BOOST_LOG_TRIVIAL(debug) << "Result: " << result;
 
         auto result_object = json::parse(result).as_object();
         if (result_object.at("code") == "200000") {
@@ -327,16 +336,19 @@ void orders_aeron_handler(const std::string& message)
 
         if (!id.empty()) {
             result = kucoin_rest->cancel_order(id);
-            BOOST_LOG_TRIVIAL(trace) << "Sent request to cancel order (id " << id << ")";
-            BOOST_LOG_TRIVIAL(trace) << "Result: " << result;
+            BOOST_LOG_TRIVIAL(debug) << "Sent request to cancel order (id " << id << ")";
+            BOOST_LOG_TRIVIAL(debug) << "Result: " << result;
         }
         return;
     }
-
-    BOOST_LOG_TRIVIAL(error) << "Unexpected message: " << message;
-    logs_channel->offer(formulate_log_message(
-            'e', 'c', 0, "Unexpected message from core: " + message
-    ));
+    else
+    {
+        BOOST_LOG_TRIVIAL(error) << "Unexpected message: " << message;
+        logs_channel->offer(formulate_log_message(
+                'e', 'c', 0, "Unexpected message from core: " + message
+        ));
+    }
+}
 
 }
 
