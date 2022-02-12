@@ -130,9 +130,10 @@ int main()
     if (!orders.empty()) { // todo fix empty, now is always True
         // Если есть активные ордера, логгирую их
         BOOST_LOG_TRIVIAL(info) << "List of active orders: " << orders;
-        logs_channel->offer(formulate_log_message(
-                'i', 'g', 0, "List of active orders: " + orders
-                ));
+        // todo превышает лимит пересылки сообщений aeron по символам, если есть ордера
+//        logs_channel->offer(formulate_log_message(
+//                'i', 'g', 0, "List of active orders: " + orders
+//                ));
         // 7. Отменяю активные ордера
         kucoin_rest->cancel_all_orders();
     } else
@@ -212,10 +213,6 @@ Bullet bullet_handler(const std::string& message)
     return result;
 }
 
-// todo add "welcome" and "ack" is normal ws messages
-//[2022-02-12 01:38:55.823138] [0x00007f39278bef00] [error]   Unexpected message: {"id":"VHcY5VAAQC","type":"welcome"}
-//[2022-02-12 01:38:55.823348] [0x00007f39278bef00] [info]    {"id":"1","type":"ack"}
-//[2022-02-12 01:38:55.823376] [0x00007f39278bef00] [error]   Unexpected message: {"id":"1","type":"ack"}
 
 // Обработчик websocket, оформляет и отправляет сообщения с ордербуком в ядром
 void orderbook_ws_handler(const std::string& message)
@@ -306,13 +303,15 @@ void orders_aeron_handler(const std::string& message)
         BOOST_LOG_TRIVIAL(trace) << "Sent request to create order (id" << id << ")";
         BOOST_LOG_TRIVIAL(trace) << "Result: " << result;
 
-        if (object.at("s") == "BUY") {
-            buy_orders.push_back(id);
-        } else if (object.at("s") == "SELL") {
-            sell_orders.push_back(id);
+        auto result_object = json::parse(result).as_object();
+        if (result_object.at("code") == "200000") {
+            auto orderId = std::string(result_object.at("data").at("orderId").as_string());
+            if (object.at("s") == "BUY") {
+                buy_orders.push_back(orderId);
+            } else if (object.at("s") == "SELL") {
+                sell_orders.push_back(orderId);
+            }
         }
-
-        return;
     }
     else if (object.at("a") == "-" && object.at("S") == "BTCUSDT")
     {

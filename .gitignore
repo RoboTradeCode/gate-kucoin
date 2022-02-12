@@ -1,6 +1,7 @@
 build
 .idea
 cmake-build-debug
+cmake-build-debug-coverage
 
 # Prerequisites
 *.d
@@ -35,3 +36,4 @@ cmake-build-debug
 *.out
 *.app
 *.zip
+

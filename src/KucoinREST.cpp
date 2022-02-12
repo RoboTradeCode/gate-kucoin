@@ -91,13 +91,25 @@ std::string KucoinREST::send_order(
 }
 
 std::string KucoinREST::cancel_order(const std::string& orderId) {
-    return https_session->request(http::verb::delete_,
-                            ORDERS_ENDPOINT + '/' + orderId);
+    auto endpoint = ORDERS_ENDPOINT + '/' + orderId;
+    auto method = http::verb::delete_;
+
+    auto signature_params = get_signatures(method, endpoint, {});
+
+    return https_session->request(method,
+                                  endpoint,
+                                  signature_params);
 }
 
 std::string KucoinREST::cancel_all_orders() {
-    return https_session->request(http::verb::delete_,
-                                  ORDERS_ENDPOINT);
+    auto endpoint = ORDERS_ENDPOINT;
+    auto method = http::verb::delete_;
+
+    auto signature_params = get_signatures(method, endpoint, {});
+
+    return https_session->request(method,
+                                  endpoint,
+                                  signature_params);
 }
 
 std::vector<std::pair<std::string, std::string>>
