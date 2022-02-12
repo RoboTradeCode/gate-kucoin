@@ -1,4 +1,0 @@
-/snap/clion/180/bin/cmake/linux/bin/cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MAKE_PROGRAM=/snap/clion/180/bin/ninja/linux/ninja -DCMAKE_CXX_FLAGS=--coverage -DCMAKE_C_FLAGS=--coverage -G Ninja /home/qod/Projects/Research/C++/KucoinGateway
--- Configuring done
--- Generating done
--- Build files have been written to: /home/qod/Projects/Research/C++/KucoinGateway/cmake-build-debug-coverage
