@@ -71,7 +71,7 @@ int main()
 
     // 0. Получение настроек конфигурации шлюза
     BOOST_LOG_TRIVIAL(info) << "Load configuration...";
-    gate_config config("/home/qod/Projects/Research/C++/KucoinGateway/kucoin_config.toml");
+    gate_config config("kucoin_config.toml");
 
     exchange_name = config.exchange.name;
     api_key = config.account.api_key;
