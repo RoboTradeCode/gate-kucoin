@@ -37,9 +37,13 @@ void subscribe_to_ws_channels();
 void connect_to_kucoin();
 
 std::string formulate_log_message(char type, char error_source, int code,
-                           std::basic_string<char, std::char_traits<char>, std::allocator<char>> message);
+                                  std::basic_string<char, std::char_traits<char>, std::allocator<char>> message);
 
 std::string format_price_precision(std::basic_string<char> price);
+
+std::string format_size_precision_btc(std::string price);
+// Форматирует объем USDT
+std::string format_size_precision_usdt(std::string price);
 
 std::string api_key{};
 std::string passphrase{};
@@ -89,9 +93,9 @@ int main()
     using namespace std::literals::chrono_literals;
 
     logging::core::get()->set_filter
-    (
-            logging::trivial::severity >= logging::trivial::trace
-    );
+            (
+                    logging::trivial::severity >= logging::trivial::debug
+            );
 
     // 0. Получение настроек конфигурации шлюза
     BOOST_LOG_TRIVIAL(info) << "Load configuration...";
@@ -174,17 +178,17 @@ int main()
     if (btc_balance_object.if_contains("code") && btc_balance_object.at("code") == "200000" &&
         usdt_balance_object.if_contains("code") && usdt_balance_object.at("code") == "200000") {
         auto balance = json::serialize(json::value{
-            {"B", json::array({
-                json::value{
-                        {"a", btc_balance_object.at("data").at("currency").as_string()},
-                        {"f", btc_balance_object.at("data").at("available").as_string()},
-                }, json::value {
-                        {"a", usdt_balance_object.at("data").at("currency").as_string()},
-                        {"f", usdt_balance_object.at("data").at("available").as_string()}
-                }
-            }
-            )}
-    });
+                {"B", json::array({
+                                          json::value{
+                                                  {"a", btc_balance_object.at("data").at("currency").as_string()},
+                                                  {"f", btc_balance_object.at("data").at("available").as_string()},
+                                          }, json::value {
+                                {"a", usdt_balance_object.at("data").at("currency").as_string()},
+                                {"f", usdt_balance_object.at("data").at("available").as_string()}
+                        }
+                                  }
+                )}
+        });
         balance_channel->offer(balance);
         BOOST_LOG_TRIVIAL(trace) << "Sent balances to core: " << balance;
     }
@@ -253,7 +257,7 @@ int main()
 
 // Функция оформляет сообщения для логов, т.е. создает json определенного формата
 std::string formulate_log_message(char type, char error_source, int code,
-                           std::basic_string<char, std::char_traits<char>, std::allocator<char>> message) {
+                                  std::basic_string<char, std::char_traits<char>, std::allocator<char>> message) {
     return json::serialize(json::value{
             { "t", std::chrono::duration_cast<std::chrono::seconds>(
                     std::chrono::system_clock::now().time_since_epoch()).count()},
@@ -305,14 +309,14 @@ void orderbook_ws_handler(const std::string& message)
         object.at("subject").as_string() == "trade.ticker")
     {
         orderbook_channel->offer(json::serialize(json::value{
-            { "u", object.at("data").at("sequence") },
-            { "s", "BTC-USDT"},
-            { "b", object.at("data").at("bestBid") },
-            { "B", object.at("data").at("bestBidSize") },
-            { "a", object.at("data").at("bestAsk") },
-            { "A", object.at("data").at("bestAskSize") },
-            { "T", std::to_string(time(nullptr)) },
-            { "exchange", exchange_name}
+                { "u", object.at("data").at("sequence") },
+                { "s", "BTC-USDT"},
+                { "b", object.at("data").at("bestBid") },
+                { "B", object.at("data").at("bestBidSize") },
+                { "a", object.at("data").at("bestAsk") },
+                { "A", object.at("data").at("bestAskSize") },
+                { "T", std::to_string(time(nullptr)) },
+                { "exchange", exchange_name}
         }));
     }
     else {
@@ -339,14 +343,14 @@ void balance_ws_handler(const std::string& message) {
         if (!object.at("data").at("total").as_string().empty() &&
             !object.at("data").at("currency").as_string().empty()) {
             auto balance = json::serialize(json::value{
-                {"B", json::array(
-                    {
-                        json::value {
-                            {"a", object.at("data").at("currency").as_string()},
-                            {"f", object.at("data").at("total").as_string()}
-                        }
-                    }
-                )}
+                    {"B", json::array(
+                            {
+                                    json::value {
+                                            {"a", object.at("data").at("currency").as_string()},
+                                            {"f", object.at("data").at("total").as_string()}
+                                    }
+                            }
+                    )}
             });
             balance_channel->offer(balance);
             BOOST_LOG_TRIVIAL(trace) << "Sent balance to core: " << balance;
@@ -382,7 +386,7 @@ void handle_order_message(const std::string& order_message) {
                 "BTC-USDT",
                 object.at("s") == "BUY" ? "buy" : "sell",
                 object.at("t") == "LIMIT" ? "limit" : "market",
-                std::string(object.at("q").as_string()),
+                format_size_precision_btc(std::string(object.at("q").as_string())),
                 format_price_precision(std::string(object.at("p").as_string()))
         );
 
@@ -433,39 +437,22 @@ std::string format_price_precision(std::string price) {
     return price;
 }
 
+//            "baseIncrement": "0.00000001",
+//            "quoteIncrement": "0.000001",
+// Форматирует объем BTC
+std::string format_size_precision_btc(std::string price) {
+    price.resize(8, '0');
+    return price;
+}
+
+// Форматирует объем USDT
+std::string format_size_precision_usdt(std::string price) {
+    price.resize(10, '0');
+    return price;
+}
+
 void sigint_handler(int)
 {
     running = false;
 }
 
-void subscribe_to_ws_channels() {// 5.1 Balance channel
-    BOOST_LOG_TRIVIAL(info) << "Sent request to subscribe to balance channel...";
-    kucoin_private_ws->subscribe_to_channel("/account/balance", 0, true);
-
-    // 5.2. Orderbook channel
-    BOOST_LOG_TRIVIAL(info) << "Sent request to subscribe to orderbook channel...";
-    kucoin_public_ws->subscribe_to_channel("/market/ticker:BTC-USDT", 1, false);
-}
-
-void connect_to_kucoin() {
-    BOOST_LOG_TRIVIAL(info) << "Trying to connect to REST...";
-    kucoin_rest = std::make_shared<KucoinREST>(
-            ioc,
-            api_key,
-            passphrase,
-            secret_key
-    );
-    BOOST_LOG_TRIVIAL(info) << "Public websocket connection established.";
-
-    // 3. Соединение с Kucoin Public websocket
-    BOOST_LOG_TRIVIAL(info) << "Trying to connect to public websocket...";
-    auto public_bullet = bullet_handler(kucoin_rest->get_public_bullet());
-    kucoin_public_ws = std::make_shared<KucoinWS>(ioc, public_bullet, orderbook_ws_handler);
-    BOOST_LOG_TRIVIAL(info) << "Public websocket connection established.";
-
-    // 4. Соединение с Kucoin Private websocket
-    BOOST_LOG_TRIVIAL(info) << "Trying to connect to private websocket...";
-    auto private_bullet = bullet_handler(kucoin_rest->get_private_bullet());
-    kucoin_private_ws = std::make_shared<KucoinWS>(ioc, private_bullet, balance_ws_handler);
-    BOOST_LOG_TRIVIAL(info) << "Private websocket connection established.";
-}
