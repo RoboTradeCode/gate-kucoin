@@ -41,8 +41,8 @@ add_executable(
         src/Uri.cpp
         src/Uri.h
 
-        src/config/gate_config.h  s
-        rc/config/aeron_channel.h
+        src/config/gate_config.h
+        src/config/aeron_channel.h
         src/config/core_config.h
 )
 target_link_libraries(
