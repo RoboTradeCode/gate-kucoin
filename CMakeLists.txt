@@ -3,7 +3,7 @@ project(kucoin_gateway)
 
 set(CMAKE_CXX_STANDARD 20)
 
-set(LIB_AERON /home/qod/Projects/libs/aeron/)
+set(LIB_AERON /home/ubuntu/aeron/)
 
 
 find_package(Boost 1.78.0 REQUIRED COMPONENTS log)
