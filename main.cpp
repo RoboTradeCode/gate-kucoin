@@ -27,6 +27,9 @@ void balance_ws_handler(const std::string &message);
 
 void orders_aeron_handler(const std::string &message);
 
+// обрабатывает строку с ордером в определенном формате, их присылает ядро
+void handle_order_message(const std::string& order_message);
+
 void sigint_handler(int);
 
 std::string formulate_log_message(char type, char error_source, int code,
@@ -40,6 +43,12 @@ std::string secret_key{};
 std::string exchange_name{};
 
 
+// Очередь ордеров, поступающие от ядра ордера добавляются в конец очереди
+// В главном цикле шлюза ордера обрабатываются: т.е. отсылаются kucoin
+// Обработка ордеров происходит не в обработчике сообщений от ядра, т.к.
+// обработчик сообщений запускается в другом потоке. Из-за этого не удается
+// обработать исключения, которые возникают во время обработки ордеров
+std::list <std::string> orders_deque{};
 
 std::atomic<bool> running(true);
 std::shared_ptr<KucoinWS> kucoin_public_ws;
@@ -53,6 +62,8 @@ std::shared_ptr<Subscriber> core_channel;
 // векторы, хранящие id ордеров
 std::vector<std::string> buy_orders;
 std::vector<std::string> sell_orders;
+
+boost::asio::io_context ioc;
 
 int main()
 {
@@ -81,7 +92,7 @@ int main()
     // 0. Получение настроек конфигурации шлюза
     BOOST_LOG_TRIVIAL(info) << "Load configuration...";
     // Указать корректный путь до конфига. Здесь
-    gate_config config("../kucoin_config.toml");
+    gate_config config("kucoin_config.toml");
 
     exchange_name = config.exchange.name;
     api_key = config.account.api_key;
@@ -106,7 +117,6 @@ int main()
 
     // 2. Соединение с Kucoin REST API
     BOOST_LOG_TRIVIAL(info) << "Trying to connect to public websocket...";
-    boost::asio::io_context ioc;
     kucoin_rest = std::make_shared<KucoinREST>(ioc, api_key, passphrase, secret_key);
     BOOST_LOG_TRIVIAL(info) << "Public websocket connection established.";
 
@@ -191,20 +201,45 @@ int main()
     BOOST_LOG_TRIVIAL(info) << "Enter the main loop";
     while (running)
     {
-        // 1. Обработка сообщений, полученных по websocket
-        ioc.run_for(std::chrono::milliseconds(100));
+        try {
+            // 1. Обработка сообщений, полученных по websocket
+            ioc.run_for(std::chrono::milliseconds(100));
 
-        // 2. Обработка ордеров, полученных от ядра
-        core_channel->poll();
+            // 2. Обработка ордеров, полученных от ядра
+            // 1) получаю ордера от ядра (через aeron), они записываются в orders_deque
+            core_channel->poll();
+            // 2) прохожу циклом по всем ордерам
+            while (!orders_deque.empty()) {
+                // 3) обрабатываю самый старый ордер в очереди
+                // (новые добавляются в конец, самый старый = самый первый)
+                handle_order_message(orders_deque.front());
+                // 4) удаляю самый старый ордер
+                orders_deque.pop_front();
+            }
 
-        // 3. Проверка, пришло ли время пропинговать websocket
-        if (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - last_ping_time) > 15s) {
-            BOOST_LOG_TRIVIAL(trace) << "Ping websockets, previous ping time: "
-            << std::chrono::duration_cast<std::chrono::seconds>(
-                    last_ping_time.time_since_epoch()).count();
-            kucoin_public_ws->ping();
-            kucoin_private_ws->ping();
-            last_ping_time = std::chrono::system_clock::now();
+            // 3. Проверка, пришло ли время пропинговать websocket
+            if (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - last_ping_time) >
+                15s) {
+                BOOST_LOG_TRIVIAL(trace) << "Ping websockets, previous ping time: "
+                                         << std::chrono::duration_cast<std::chrono::seconds>(
+                                                 last_ping_time.time_since_epoch()).count();
+                kucoin_public_ws->ping();
+                kucoin_private_ws->ping();
+                last_ping_time = std::chrono::system_clock::now();
+            }
+        }
+        catch (...) {
+            BOOST_LOG_TRIVIAL(warning) << "Problem with connection with Kucoin! Reconnecting...";
+
+            kucoin_rest = std::make_shared<KucoinREST>(
+                    ioc,
+                    api_key,
+                    passphrase,
+                    secret_key
+            );
+            BOOST_LOG_TRIVIAL(info) << "Kucoin connections established.";
+
+            kucoin_rest->cancel_all_orders();
         }
     }
 
@@ -285,12 +320,14 @@ void orderbook_ws_handler(const std::string& message)
 
 // Обработчик websocket, оформляет и отправляет сообщения с балансом по ассету в ядром
 void balance_ws_handler(const std::string& message) {
-    BOOST_LOG_TRIVIAL(debug) << "Received message of balance: " << message;
+
     auto object = json::parse(message).as_object();
 
     if (object.at("type").as_string() == "welcome" ||
         object.at("type").as_string() == "ack" ||
         object.at("type").as_string() == "pong") return;
+
+    BOOST_LOG_TRIVIAL(debug) << "Received message of balance: " << message;
 
     if (object.if_contains("subject") &&
         object.at("subject") == "account.balance") {
@@ -320,22 +357,28 @@ void balance_ws_handler(const std::string& message) {
 
 
 // Обработчик сообщений из aeron на выставление и отмену ордеров (BTCUSDT)
+// добавляет ордера в очередь, которые отсылаются в главном цикле
 void orders_aeron_handler(const std::string& message)
 {
     BOOST_LOG_TRIVIAL(debug) << "Received message in aeron handler: " << message;
-    auto object = json::parse(message).as_object();
+    orders_deque.push_back(message);
+}
+
+// обрабатывает строку с ордером в определенном формате, их присылает ядро
+void handle_order_message(const std::string& order_message) {
+    auto object = json::parse(order_message).as_object();
     std::string result{};
 
     if (object.at("a") == "+" && object.at("S") == "BTCUSDT")
     {
         auto id = std::to_string(get_unix_timestamp());
         result = kucoin_rest->send_order(
-            id,
-            "BTC-USDT",
-            object.at("s") == "BUY" ? "buy" : "sell",
-            object.at("t") == "LIMIT" ? "limit" : "market",
-            std::string(object.at("q").as_string()),
-            format_price_precision(std::string(object.at("p").as_string()))
+                id,
+                "BTC-USDT",
+                object.at("s") == "BUY" ? "buy" : "sell",
+                object.at("t") == "LIMIT" ? "limit" : "market",
+                std::string(object.at("q").as_string()),
+                format_price_precision(std::string(object.at("p").as_string()))
         );
 
         BOOST_LOG_TRIVIAL(debug) << "Sent request to create order (id" << id << ")";
@@ -372,9 +415,9 @@ void orders_aeron_handler(const std::string& message)
     }
     else
     {
-        BOOST_LOG_TRIVIAL(error) << "Unexpected message: " << message;
+        BOOST_LOG_TRIVIAL(error) << "Unexpected order message: " << order_message;
         logs_channel->offer(formulate_log_message(
-                'e', 'c', 0, "Unexpected message from core: " + message
+                'e', 'c', 0, "Unexpected message from core: " + order_message
         ));
     }
 }
