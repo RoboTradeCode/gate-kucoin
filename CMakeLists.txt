@@ -3,14 +3,14 @@ project(kucoin_gateway)
 
 set(CMAKE_CXX_STANDARD 20)
 
-set(LIB_AERON /home/qod/Projects/libs/aeron/cppbuild/Release/lib/)
+set(LIB_AERON /home/qod/Projects/libs/aeron/)
 
 
 find_package(Boost 1.78.0 REQUIRED COMPONENTS log)
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-include_directories(/home/qod/Projects/libs/aeron/aeron-client/src/main/cpp)
+include_directories(${LIB_AERON}/aeron-client/src/main/cpp)
 
 #include(libs/aeron_cpp/CMakeLists.txt)
 
@@ -50,5 +50,5 @@ target_link_libraries(
         Threads::Threads
         OpenSSL::SSL
         Boost::log
-        ${LIB_AERON}/libaeron_client.a
+        ${LIB_AERON}/cppbuild/Release/lib/libaeron_client.a
 )
