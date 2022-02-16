@@ -7,12 +7,12 @@
 #include <boost/log/trivial.hpp>
 #include <boost/log/expressions.hpp>
 
-#include "src/includes/KucoinWS.h"
-#include "src/includes/kucoin_structures.h"
-#include "src/includes/KucoinREST.h"
-#include "src/includes/Publisher.h"
-#include "src/includes/Subscriber.h"
-#include "src/includes/Uri.h"
+#include "src/KucoinWS.h"
+#include "src/kucoin_structures.h"
+#include "src/KucoinREST.h"
+#include "libs/aeron_cpp/src/Publisher.h"
+#include "libs/aeron_cpp/src/Subscriber.h"
+#include "src/Uri.h"
 
 #include "src/config/gate_config.h"
 
@@ -25,12 +25,16 @@ void orderbook_ws_handler(const std::string &message);
 
 void balance_ws_handler(const std::string &message);
 
-void orders_aeron_handler(const std::string &message);
+void aeron_orders_handler(std::string_view message);
 
 // обрабатывает строку с ордером в определенном формате, их присылает ядро
 void handle_order_message(const std::string& order_message);
 
 void sigint_handler(int);
+
+void subscribe_to_ws_channels();
+
+void connect_to_kucoin();
 
 std::string formulate_log_message(char type, char error_source, int code,
                            std::basic_string<char, std::char_traits<char>, std::allocator<char>> message);
@@ -86,7 +90,7 @@ int main()
 
     logging::core::get()->set_filter
     (
-            logging::trivial::severity >= logging::trivial::debug
+            logging::trivial::severity >= logging::trivial::trace
     );
 
     // 0. Получение настроек конфигурации шлюза
@@ -109,7 +113,7 @@ int main()
     logs_channel = std::make_shared<Publisher>(config.aeron.publishers.logs.channel,
                                                config.aeron.publishers.logs.stream_id);
 
-    core_channel = std::make_shared<Subscriber>(&orders_aeron_handler,
+    core_channel = std::make_shared<Subscriber>(aeron_orders_handler,
                                                 config.aeron.subscribers.core.channel,
                                                 config.aeron.subscribers.core.stream_id);
 
@@ -358,10 +362,10 @@ void balance_ws_handler(const std::string& message) {
 
 // Обработчик сообщений из aeron на выставление и отмену ордеров (BTCUSDT)
 // добавляет ордера в очередь, которые отсылаются в главном цикле
-void orders_aeron_handler(const std::string& message)
+void aeron_orders_handler(std::string_view message)
 {
     BOOST_LOG_TRIVIAL(debug) << "Received message in aeron handler: " << message;
-    orders_deque.push_back(message);
+    orders_deque.push_back(std::string(message));
 }
 
 // обрабатывает строку с ордером в определенном формате, их присылает ядро
@@ -422,7 +426,6 @@ void handle_order_message(const std::string& order_message) {
     }
 }
 
-
 // Форматирует цену BTC, округляет до десятых
 std::string format_price_precision(std::string price) {
     price.resize(7, '0');
@@ -432,4 +435,36 @@ std::string format_price_precision(std::string price) {
 void sigint_handler(int)
 {
     running = false;
+}
+
+void subscribe_to_ws_channels() {// 5.1 Balance channel
+    BOOST_LOG_TRIVIAL(info) << "Sent request to subscribe to balance channel...";
+    kucoin_private_ws->subscribe_to_channel("/account/balance", 0, true);
+
+    // 5.2. Orderbook channel
+    BOOST_LOG_TRIVIAL(info) << "Sent request to subscribe to orderbook channel...";
+    kucoin_public_ws->subscribe_to_channel("/market/ticker:BTC-USDT", 1, false);
+}
+
+void connect_to_kucoin() {
+    BOOST_LOG_TRIVIAL(info) << "Trying to connect to REST...";
+    kucoin_rest = std::make_shared<KucoinREST>(
+            ioc,
+            api_key,
+            passphrase,
+            secret_key
+    );
+    BOOST_LOG_TRIVIAL(info) << "Public websocket connection established.";
+
+    // 3. Соединение с Kucoin Public websocket
+    BOOST_LOG_TRIVIAL(info) << "Trying to connect to public websocket...";
+    auto public_bullet = bullet_handler(kucoin_rest->get_public_bullet());
+    kucoin_public_ws = std::make_shared<KucoinWS>(ioc, public_bullet, orderbook_ws_handler);
+    BOOST_LOG_TRIVIAL(info) << "Public websocket connection established.";
+
+    // 4. Соединение с Kucoin Private websocket
+    BOOST_LOG_TRIVIAL(info) << "Trying to connect to private websocket...";
+    auto private_bullet = bullet_handler(kucoin_rest->get_private_bullet());
+    kucoin_private_ws = std::make_shared<KucoinWS>(ioc, private_bullet, balance_ws_handler);
+    BOOST_LOG_TRIVIAL(info) << "Private websocket connection established.";
 }

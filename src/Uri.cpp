@@ -2,7 +2,7 @@
 // Created by qod on 03.02.2022.
 //
 
-#include "includes/Uri.h"
+#include "Uri.h"
 
 #include <string>
 #include <algorithm>    // find
