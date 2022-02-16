@@ -306,12 +306,13 @@ void orderbook_ws_handler(const std::string& message)
     {
         orderbook_channel->offer(json::serialize(json::value{
             { "u", object.at("data").at("sequence") },
-            { "tcp_stream", "BTCUSDT"}, // todo - сделать замену значений по типу BTC-USDT => BTCUSDT (т.к. будет много тикеров)
+            { "s", "BTC-USDT"},
             { "b", object.at("data").at("bestBid") },
             { "B", object.at("data").at("bestBidSize") },
             { "a", object.at("data").at("bestAsk") },
             { "A", object.at("data").at("bestAskSize") },
-            { "T", std::to_string(time(nullptr)) }
+            { "T", std::to_string(time(nullptr)) },
+            { "exchange", exchange_name}
         }));
     }
     else {
@@ -360,7 +361,7 @@ void balance_ws_handler(const std::string& message) {
 }
 
 
-// Обработчик сообщений из aeron на выставление и отмену ордеров (BTCUSDT)
+// Обработчик сообщений из aeron на выставление и отмену ордеров (BTCU-SDT)
 // добавляет ордера в очередь, которые отсылаются в главном цикле
 void aeron_orders_handler(std::string_view message)
 {
@@ -373,7 +374,7 @@ void handle_order_message(const std::string& order_message) {
     auto object = json::parse(order_message).as_object();
     std::string result{};
 
-    if (object.at("a") == "+" && object.at("S") == "BTCUSDT")
+    if (object.at("a") == "+" && object.at("S") == "BTC-USDT")
     {
         auto id = std::to_string(get_unix_timestamp());
         result = kucoin_rest->send_order(
@@ -398,7 +399,7 @@ void handle_order_message(const std::string& order_message) {
             }
         }
     }
-    else if (object.at("a") == "-" && object.at("S") == "BTCUSDT")
+    else if (object.at("a") == "-" && object.at("S") == "BTC-USDT")
     {
         std::string id{};
 
