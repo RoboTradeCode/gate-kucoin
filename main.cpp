@@ -45,6 +45,12 @@ std::string format_size_precision_btc(std::string price);
 // Форматирует объем USDT
 std::string format_size_precision_usdt(std::string price);
 
+void ping_ws();
+
+void connect_to_public_ws();
+
+void connect_to_private_ws();
+
 std::string api_key{};
 std::string passphrase{};
 std::string secret_key{};
@@ -90,7 +96,6 @@ int main()
      * 9. Бесконечный цикл, в нём проверка сообщения от ядра
      * */
 
-    using namespace std::literals::chrono_literals;
 
     logging::core::get()->set_filter
             (
@@ -130,14 +135,12 @@ int main()
 
     // 3. Соединение с Kucoin Public websocket
     BOOST_LOG_TRIVIAL(info) << "Trying to connect to public websocket...";
-    auto public_bullet = bullet_handler(kucoin_rest->get_public_bullet());
-    kucoin_public_ws = std::make_shared<KucoinWS>(ioc, public_bullet, orderbook_ws_handler);
+    connect_to_public_ws();
     BOOST_LOG_TRIVIAL(info) << "Public websocket connection established.";
 
     // 4. Соединение с Kucoin Private websocket
     BOOST_LOG_TRIVIAL(info) << "Trying to connect to private websocket...";
-    auto private_bullet = bullet_handler(kucoin_rest->get_private_bullet());
-    kucoin_private_ws = std::make_shared<KucoinWS>(ioc, private_bullet, balance_ws_handler);
+    connect_to_private_ws();
     BOOST_LOG_TRIVIAL(info) << "Private websocket connection established.";
 
     // 5. Подписка на необходимые каналы websocket
@@ -177,18 +180,11 @@ int main()
 //    "{\"code\":\"200000\",\"data\":{\"currency\":\"BTC\",\"balance\":\"0.00209\",\"available\":\"0.00209\",\"holds\":\"0\"}}"
     if (btc_balance_object.if_contains("code") && btc_balance_object.at("code") == "200000" &&
         usdt_balance_object.if_contains("code") && usdt_balance_object.at("code") == "200000") {
-        auto balance = json::serialize(json::value{
-                {"B", json::array({
-                                          json::value{
-                                                  {"a", btc_balance_object.at("data").at("currency").as_string()},
-                                                  {"f", btc_balance_object.at("data").at("available").as_string()},
-                                          }, json::value {
-                                {"a", usdt_balance_object.at("data").at("currency").as_string()},
-                                {"f", usdt_balance_object.at("data").at("available").as_string()}
-                        }
-                                  }
-                )}
-        });
+        auto balance = json::serialize(json::value{{"B", json::array(
+                {json::value{{"a", btc_balance_object.at("data").at("currency").as_string()},
+                             {"f", btc_balance_object.at("data").at("available").as_string()},},
+                 json::value{{"a", usdt_balance_object.at("data").at("currency").as_string()},
+                             {"f", usdt_balance_object.at("data").at("available").as_string()}}})}});
         balance_channel->offer(balance);
         BOOST_LOG_TRIVIAL(trace) << "Sent balances to core: " << balance;
     }
@@ -196,7 +192,6 @@ int main()
     // Обработчик прерываний, для выхода из цикла.
     signal(SIGINT, sigint_handler);
 
-    auto last_ping_time = std::chrono::system_clock::now();
 
 
     // 9. Основной цикл работы шлюза
@@ -213,46 +208,94 @@ int main()
             // 1. Обработка сообщений, полученных по websocket
             ioc.run_for(std::chrono::milliseconds(100));
 
-            // 2. Обработка ордеров, полученных от ядра
-            // 1) получаю ордера от ядра (через aeron), они записываются в orders_deque
+            // 2. получаю ордера от ядра (через aeron), они записываются в orders_deque
             core_channel->poll();
-            // 2) прохожу циклом по всем ордерам
+            // 3. прохожу циклом по всем ордерам
             while (!orders_deque.empty()) {
-                // 3) обрабатываю самый старый ордер в очереди
+                // 4. обрабатываю самый старый ордер в очереди
                 // (новые добавляются в конец, самый старый = самый первый)
                 handle_order_message(orders_deque.front());
-                // 4) удаляю самый старый ордер
+                // 5. удаляю самый старый ордер
                 orders_deque.pop_front();
             }
 
-            // 3. Проверка, пришло ли время пропинговать websocket
-            if (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now() - last_ping_time) >
-                15s) {
-                BOOST_LOG_TRIVIAL(trace) << "Ping websockets, previous ping time: "
-                                         << std::chrono::duration_cast<std::chrono::seconds>(
-                                                 last_ping_time.time_since_epoch()).count();
-                kucoin_public_ws->ping();
-                kucoin_private_ws->ping();
-                last_ping_time = std::chrono::system_clock::now();
-            }
-        }
-        catch (...) {
+            // 6. Проверка, пришло ли время пропинговать websocket
+            ping_ws();
+        } catch (http::error error) {
+            BOOST_LOG_TRIVIAL(error)  << "Http error: " << make_error_code(error).to_string();
             BOOST_LOG_TRIVIAL(warning) << "Problem with connection with Kucoin! Reconnecting...";
 
-            kucoin_rest = std::make_shared<KucoinREST>(
-                    ioc,
-                    api_key,
-                    passphrase,
-                    secret_key
-            );
+            // переподключаюсь к REST API
+            kucoin_rest = std::make_shared<KucoinREST>(ioc, api_key, passphrase, secret_key);
             BOOST_LOG_TRIVIAL(info) << "Kucoin connections established.";
+        } catch (boost::system::system_error error) {
+            BOOST_LOG_TRIVIAL(error) << "System error: " << error.code().message();
+            BOOST_LOG_TRIVIAL(warning) << "Reconnecting to REST API...";
 
-            kucoin_rest->cancel_all_orders();
+            // переподключаюсь к REST API
+            kucoin_rest = std::make_shared<KucoinREST>(ioc, api_key, passphrase, secret_key);
+            BOOST_LOG_TRIVIAL(info) << "Kucoin connections established.";
+        } catch (boost::beast::websocket::error error) {
+            BOOST_LOG_TRIVIAL(error) << "Websocket error: " << make_error_code(error).to_string();
+            BOOST_LOG_TRIVIAL(warning) << "Reconnecting to websocket...";
+
+            BOOST_LOG_TRIVIAL(info) << "Trying to connect to public websocket...";
+            connect_to_public_ws();
+            BOOST_LOG_TRIVIAL(info) << "Public websocket connection established.";
+
+            // 4. Соединение с Kucoin Private websocket
+            BOOST_LOG_TRIVIAL(info) << "Trying to connect to private websocket...";
+            connect_to_private_ws();
+            BOOST_LOG_TRIVIAL(info) << "Private websocket connection established.";
+
+            // 5. Подписка на необходимые каналы websocket
+
+            // 5.1 Balance channel
+            BOOST_LOG_TRIVIAL(info) << "Sent request to subscribe to balance channel";
+            kucoin_private_ws->subscribe_to_channel("/account/balance", 0, true);
+
+            // 5.2. Orderbook channel
+            BOOST_LOG_TRIVIAL(info) << "Sent request to subscribe to orderbook channel";
+            kucoin_public_ws->subscribe_to_channel("/market/ticker:BTC-USDT", 1, false);
+
+            BOOST_LOG_TRIVIAL(info) << "Kucoin connections established";
+        } catch(const std::runtime_error& re) {
+            BOOST_LOG_TRIVIAL(error) << "Runtime error: " << re.what();
+        } catch(const std::exception& ex) {
+            BOOST_LOG_TRIVIAL(error) << "Error occurred: " << ex.what();
+        } catch(...) {
+            BOOST_LOG_TRIVIAL(error) << "Unknown failure occurred. Possible memory corruption";
         }
     }
 
     BOOST_LOG_TRIVIAL(info) << "Exit the main loop";
     return EXIT_SUCCESS;
+}
+
+void connect_to_public_ws() {
+    auto public_bullet = bullet_handler(kucoin_rest->get_public_bullet());
+    kucoin_public_ws = std::make_shared<KucoinWS>(ioc, public_bullet, orderbook_ws_handler);
+}
+
+void connect_to_private_ws() {
+    auto private_bullet = bullet_handler(kucoin_rest->get_private_bullet());
+    kucoin_private_ws = std::make_shared<KucoinWS>(ioc, private_bullet, balance_ws_handler);
+}
+
+void ping_ws() {
+    using namespace std::literals::chrono_literals;
+
+    auto last_ping_time = std::chrono::system_clock::now();
+
+    if (std::chrono::duration_cast<std::chrono::seconds>
+            (std::chrono::system_clock::now() - last_ping_time) > 15s) {
+        BOOST_LOG_TRIVIAL(trace) << "Ping websockets, previous ping time: "
+                                 << std::chrono::duration_cast<std::chrono::seconds>(
+                                         last_ping_time.time_since_epoch()).count();
+        kucoin_public_ws->ping();
+        kucoin_private_ws->ping();
+        last_ping_time = std::chrono::system_clock::now();
+    }
 }
 
 // Функция оформляет сообщения для логов, т.е. создает json определенного формата
