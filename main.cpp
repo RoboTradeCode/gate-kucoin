@@ -288,9 +288,10 @@ void get_balance() {
         BOOST_LOG_TRIVIAL(trace) << balance_message;
         auto id_balance = json::parse(balance_message).as_object();
         if (id_balance.if_contains("code") && id_balance.at("code") == "200000") {
-            balances.push_back(json::value{{id_balance.at("data").at("currency").as_string(),
-                                 id_balance.at("data").at("available").as_string()
-                                }});
+            balances.push_back(json::value{
+                {"a", id_balance.at("data").at("currency").as_string()},
+                {"f", id_balance.at("data").at("available").as_string()}
+            });
         }
         auto full_balance = json::serialize(json::value{{"B", balances}});
         balance_channel->offer(full_balance);
