@@ -193,27 +193,39 @@ int main() {
 }
 
 /// \brief Главный цикл шлюза
+///
 /// Выполняется всё время работы шлюза.
-/// Выход из цикла означает завершение работы шлюза
+/// Выход из цикла означает завершение работы шлюза.
+/// Операции внутри цикла выполняются внутри try catch
+/// При обрыве соединения шлюз должен переподключиться
+///
+/// Операции во время итерации цикла:
+///  1. Проверка, пришло ли время пропинговать websocket
+///  2. Обработка сообщений, полученных по websocket
+///  3. получаю ордера от ядра (через aeron), они записываются в orders_deque
+///  4. прохожу циклом по всем ордерам
+///  5. обрабатываю самый старый ордер в очереди
+///   (новые добавляются в конец, самый старый = самый первый)
+///  6. удаляю самый старый ордер
 void enter_main_loop() {
     while (running) {
         try {
-            // 1. Обработка сообщений, полученных по websocket
+            // 1. Проверка, пришло ли время пропинговать websocket
+            ping_ws();
+            // 2. Обработка сообщений, полученных по websocket
             ioc.run_for(std::chrono::milliseconds(100));
 
-            // 2. получаю ордера от ядра (через aeron), они записываются в orders_deque
+            // 3. получаю ордера от ядра (через aeron), они записываются в orders_deque
             core_channel->poll();
-            // 3. прохожу циклом по всем ордерам
+            // 4. прохожу циклом по всем ордерам
             while (!orders_deque.empty()) {
-                // 4. обрабатываю самый старый ордер в очереди
+                // 5. обрабатываю самый старый ордер в очереди
                 // (новые добавляются в конец, самый старый = самый первый)
                 handle_order_message(orders_deque.front());
-                // 5. удаляю самый старый ордер
+                // 6. удаляю самый старый ордер
                 orders_deque.pop_front();
             }
 
-            // 6. Проверка, пришло ли время пропинговать websocket
-            ping_ws();
         } catch (http::error error) {
             BOOST_LOG_TRIVIAL(error)  << "Http error: " << make_error_code(error).to_string();
             BOOST_LOG_TRIVIAL(warning) << "Problem with connection with Kucoin! Reconnecting...";
@@ -301,7 +313,7 @@ void connect_to_private_ws() {
 void ping_ws() {
     using namespace std::literals::chrono_literals;
 
-    auto last_ping_time = std::chrono::system_clock::now();
+    static auto last_ping_time = std::chrono::system_clock::now();
 
     if (std::chrono::duration_cast<std::chrono::seconds>
             (std::chrono::system_clock::now() - last_ping_time) > 15s) {
