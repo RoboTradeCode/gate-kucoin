@@ -98,7 +98,7 @@ int main() {
      * */
 
 
-    logging::core::get()->set_filter(logging::trivial::severity >= logging::trivial::debug);
+    logging::core::get()->set_filter(logging::trivial::severity >= logging::trivial::trace);
 
     // 0. Получение настроек конфигурации шлюза
     BOOST_LOG_TRIVIAL(info) << "Load configuration...";
