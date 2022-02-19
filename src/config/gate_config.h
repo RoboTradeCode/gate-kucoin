@@ -23,10 +23,7 @@ struct gate_config{
         std::string secret_key{};
         std::string passphrase{};
 
-        struct {
-            std::string btc_account_id{};
-            std::string usdt_account_id{};
-        } ids;
+        std::vector<std::string> ids;
     } account;
 
     struct {
@@ -66,9 +63,7 @@ struct gate_config{
         account.secret_key = config["account"]["secret_key"].value_or("");
         account.passphrase = config["account"]["passphrase"].value_or("");
 
-        account.ids.btc_account_id = config["account"]["btc_account_id"].value_or("");
-        account.ids.usdt_account_id = config["account"]["usdt_account_id"].value_or("");
-
+        get_vector(account.ids, config["account"]["ids"]);
 
         aeron.publishers.orderbook.channel = config["aeron"]["publishers"]["orderbook"][0].value_or("");
         aeron.publishers.orderbook.stream_id = config["aeron"]["publishers"]["orderbook"][1].value_or(0);
@@ -80,6 +75,19 @@ struct gate_config{
 
         aeron.subscribers.core.channel = config["aeron"]["subscribers"]["core"][0].value_or("");
         aeron.subscribers.core.stream_id = config["aeron"]["subscribers"]["core"][1].value_or(0);
+    }
+
+    /// Считаем список элементов
+    static bool get_vector(std::vector<std::string>& vector,       ///< вектор куда будем записывать
+                           toml::node_view<toml::node> config_node){     ///< узел конфига от куда будем читать
+        // проверим что указан массив(список) и то, что он содержит данные одного типа - is_homogeneous()
+        if (toml::array* array = config_node.as_array(); array->is_homogeneous())
+            // добавив в список destinations не пустые элементы списка
+            for (toml::node &elem: *array)
+                if(std::string item_value = elem.value_or(""); not item_value.empty())
+                    vector.emplace_back(item_value);
+
+        return true;
     }
 
 };

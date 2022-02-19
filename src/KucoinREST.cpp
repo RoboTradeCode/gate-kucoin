@@ -9,6 +9,18 @@ KucoinREST::KucoinREST(boost::asio::io_context& ioc, std::string api_key, std::s
     https_session = std::make_shared<HTTPSession>(HOST, PORT, ioc);
 }
 
+
+bool KucoinREST::reconnect(boost::asio::io_context &ioc) {
+    try {
+        https_session = std::make_shared<HTTPSession>(HOST, PORT, ioc);
+        return true;
+    }
+    catch (...) {
+        return false;
+    }
+}
+
+
 std::string KucoinREST::get_active_orders()
 {
     auto endpoint = ORDERS_ENDPOINT + "?status=active";
