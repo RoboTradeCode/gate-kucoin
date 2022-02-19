@@ -6,6 +6,7 @@
 #include <boost/log/core.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/log/expressions.hpp>
+#include <error.h>
 
 #include "src/KucoinWS.h"
 #include "src/kucoin_structures.h"
@@ -19,7 +20,7 @@
 namespace json = boost::json;
 namespace logging = boost::log;
 
-Bullet bullet_handler(const std::string&);
+Bullet bullet_handler(const std::string &);
 
 void orderbook_ws_handler(const std::string &message);
 
@@ -28,7 +29,7 @@ void balance_ws_handler(const std::string &message);
 void aeron_orders_handler(std::string_view message);
 
 // обрабатывает строку с ордером в определенном формате, их присылает ядро
-void handle_order_message(const std::string& order_message);
+void handle_order_message(const std::string &order_message);
 
 void sigint_handler(int);
 
@@ -42,6 +43,7 @@ std::string formulate_log_message(char type, char error_source, int code,
 std::string format_price_precision(std::basic_string<char> price);
 
 std::string format_size_precision_btc(std::string price);
+
 // Форматирует объем USDT
 std::string format_size_precision_usdt(std::string price);
 
@@ -51,18 +53,16 @@ void connect_to_public_ws();
 
 void connect_to_private_ws();
 
-std::string api_key{};
-std::string passphrase{};
-std::string secret_key{};
-std::string exchange_name{};
+void get_balance();
 
+void enter_main_loop();
 
 // Очередь ордеров, поступающие от ядра ордера добавляются в конец очереди
 // В главном цикле шлюза ордера обрабатываются: т.е. отсылаются kucoin
 // Обработка ордеров происходит не в обработчике сообщений от ядра, т.к.
 // обработчик сообщений запускается в другом потоке. Из-за этого не удается
 // обработать исключения, которые возникают во время обработки ордеров
-std::list <std::string> orders_deque{};
+std::list<std::string> orders_deque{};
 
 std::atomic<bool> running(true);
 std::shared_ptr<KucoinWS> kucoin_public_ws;
@@ -79,8 +79,9 @@ std::vector<std::string> sell_orders;
 
 boost::asio::io_context ioc;
 
-int main()
-{
+std::shared_ptr<gate_config> config;
+
+int main() {
     /* Алгоритм работы:
      * 0. Получение настроек конфигурации шлюза
      * 1. Соединение с каналами Aeron
@@ -97,40 +98,36 @@ int main()
      * */
 
 
-    logging::core::get()->set_filter
-            (
-                    logging::trivial::severity >= logging::trivial::debug
-            );
+    logging::core::get()->set_filter(logging::trivial::severity >= logging::trivial::debug);
 
     // 0. Получение настроек конфигурации шлюза
     BOOST_LOG_TRIVIAL(info) << "Load configuration...";
-    // Указать корректный путь до конфига. Здесь
-    gate_config config("kucoin_config.toml");
-
-    exchange_name = config.exchange.name;
-    api_key = config.account.api_key;
-    secret_key = config.account.secret_key;
-    passphrase = config.account.passphrase;
-
+    // Указать корректный путь до конфига
+    config = std::make_shared<gate_config>("kucoin_config.toml");
 
     // 1. Соединение с каналами Aeron
     BOOST_LOG_TRIVIAL(info) << "Trying to connect with aeron...";
-    orderbook_channel = std::make_shared<Publisher>(config.aeron.publishers.orderbook.channel,
-                                                    config.aeron.publishers.orderbook.stream_id);
-    balance_channel = std::make_shared<Publisher>(config.aeron.publishers.balance.channel,
-                                                  config.aeron.publishers.balance.stream_id);
-    logs_channel = std::make_shared<Publisher>(config.aeron.publishers.logs.channel,
-                                               config.aeron.publishers.logs.stream_id);
+    orderbook_channel = std::make_shared<Publisher>(config->aeron.publishers.orderbook.channel,
+                                                    config->aeron.publishers.orderbook.stream_id);
+    balance_channel = std::make_shared<Publisher>(config->aeron.publishers.balance.channel,
+                                                  config->aeron.publishers.balance.stream_id);
+    logs_channel = std::make_shared<Publisher>(config->aeron.publishers.logs.channel,
+                                               config->aeron.publishers.logs.stream_id, 1400);
 
     core_channel = std::make_shared<Subscriber>(aeron_orders_handler,
-                                                config.aeron.subscribers.core.channel,
-                                                config.aeron.subscribers.core.stream_id);
+                                                config->aeron.subscribers.core.channel,
+                                                config->aeron.subscribers.core.stream_id);
 
     BOOST_LOG_TRIVIAL(info) << "Aeron connections established";
 
     // 2. Соединение с Kucoin REST API
     BOOST_LOG_TRIVIAL(info) << "Trying to connect to public websocket...";
-    kucoin_rest = std::make_shared<KucoinREST>(ioc, api_key, passphrase, secret_key);
+    kucoin_rest = std::make_shared<KucoinREST>(
+            ioc,
+            config->account.api_key,
+            config->account.passphrase,
+            config->account.secret_key
+    );
     BOOST_LOG_TRIVIAL(info) << "Public websocket connection established.";
 
     // 3. Соединение с Kucoin Public websocket
@@ -158,41 +155,25 @@ int main()
     // 6. Получение активных ордеров
     BOOST_LOG_TRIVIAL(info) << "Trying to get list of active orders";
     auto orders = kucoin_rest->get_active_orders();
-    if (!orders.empty()) { // todo fix empty, now is always True
+    auto order_object = json::parse(orders).as_object();
+    // Если есть ордера (totalNum - общее число активных оредров)
+    if (order_object.at("data").at("totalNum").as_int64() > 0) {
         // Если есть активные ордера, логгирую их
         BOOST_LOG_TRIVIAL(info) << "List of active orders: " << orders;
         // todo превышает лимит пересылки сообщений aeron по символам, если есть ордера
-//        logs_channel->offer(formulate_log_message(
-//                'i', 'g', 0, "List of active orders: " + orders
-//                ));
+        logs_channel->offer(formulate_log_message(
+                'i', 'g', 0, "List of active orders: " + orders
+                ));
         // 7. Отменяю активные ордера
         kucoin_rest->cancel_all_orders();
     } else
         BOOST_LOG_TRIVIAL(info) << "No active orders";
 
     // 8. Получаю текущий баланс аккаунта
-    auto btc_balance_json = kucoin_rest->get_balance(config.account.ids.btc_account_id);
-    auto btc_balance_object = json::parse(btc_balance_json).as_object();
-
-    auto usdt_balance_json = kucoin_rest->get_balance(config.account.ids.usdt_account_id);
-    auto usdt_balance_object = json::parse(usdt_balance_json).as_object();
-
-//    "{\"code\":\"200000\",\"data\":{\"currency\":\"BTC\",\"balance\":\"0.00209\",\"available\":\"0.00209\",\"holds\":\"0\"}}"
-    if (btc_balance_object.if_contains("code") && btc_balance_object.at("code") == "200000" &&
-        usdt_balance_object.if_contains("code") && usdt_balance_object.at("code") == "200000") {
-        auto balance = json::serialize(json::value{{"B", json::array(
-                {json::value{{"a", btc_balance_object.at("data").at("currency").as_string()},
-                             {"f", btc_balance_object.at("data").at("available").as_string()},},
-                 json::value{{"a", usdt_balance_object.at("data").at("currency").as_string()},
-                             {"f", usdt_balance_object.at("data").at("available").as_string()}}})}});
-        balance_channel->offer(balance);
-        BOOST_LOG_TRIVIAL(trace) << "Sent balances to core: " << balance;
-    }
+    get_balance();
 
     // Обработчик прерываний, для выхода из цикла.
     signal(SIGINT, sigint_handler);
-
-
 
     // 9. Основной цикл работы шлюза
 
@@ -201,9 +182,21 @@ int main()
      * 2. Обработка ордеров, полученных от ядра
      * 3. Проверка, пришло ли время пропинговать websocket
      * */
+
+
     BOOST_LOG_TRIVIAL(info) << "Enter the main loop";
-    while (running)
-    {
+    // вход в главный цикл шлюза
+    enter_main_loop();
+
+    BOOST_LOG_TRIVIAL(info) << "Exit the main loop";
+    return EXIT_SUCCESS;
+}
+
+/// \brief Главный цикл шлюза
+/// Выполняется всё время работы шлюза.
+/// Выход из цикла означает завершение работы шлюза
+void enter_main_loop() {
+    while (running) {
         try {
             // 1. Обработка сообщений, полученных по websocket
             ioc.run_for(std::chrono::milliseconds(100));
@@ -226,16 +219,20 @@ int main()
             BOOST_LOG_TRIVIAL(warning) << "Problem with connection with Kucoin! Reconnecting...";
 
             // переподключаюсь к REST API
-            kucoin_rest = std::make_shared<KucoinREST>(ioc, api_key, passphrase, secret_key);
-            BOOST_LOG_TRIVIAL(info) << "Kucoin connections established.";
+            if (kucoin_rest->reconnect(ioc))
+                BOOST_LOG_TRIVIAL(info) << "Kucoin connections established.";
+            else
+                BOOST_LOG_TRIVIAL(info) << "Problem with reconnection.";
         } catch (boost::system::system_error error) {
             BOOST_LOG_TRIVIAL(error) << "System error: " << error.code().message();
             BOOST_LOG_TRIVIAL(warning) << "Reconnecting to REST API...";
 
             // переподключаюсь к REST API
-            kucoin_rest = std::make_shared<KucoinREST>(ioc, api_key, passphrase, secret_key);
-            BOOST_LOG_TRIVIAL(info) << "Kucoin connections established.";
-        } catch (boost::beast::websocket::error error) {
+            if (kucoin_rest->reconnect(ioc))
+                BOOST_LOG_TRIVIAL(info) << "Kucoin connections established.";
+            else
+                BOOST_LOG_TRIVIAL(info) << "Problem with reconnection.";
+        } catch (websocket::error error) {
             BOOST_LOG_TRIVIAL(error) << "Websocket error: " << make_error_code(error).to_string();
             BOOST_LOG_TRIVIAL(warning) << "Reconnecting to websocket...";
 
@@ -267,21 +264,40 @@ int main()
             BOOST_LOG_TRIVIAL(error) << "Unknown failure occurred. Possible memory corruption";
         }
     }
-
-    BOOST_LOG_TRIVIAL(info) << "Exit the main loop";
-    return EXIT_SUCCESS;
 }
 
+/// \brief Отправляет ядру актуальный баланс шлюза по всем аккаунтам, указанным в конфигурации
+/// Выполняет много запросов к API, если указано много аккаунтов (запрос на каждый аккаунт)
+void get_balance() {
+    auto ids{config->account.ids};
+    std::vector<std::pair<std::string, std::string>> balances{};
+    for (auto id : ids) {
+        auto id_balance = json::parse(kucoin_rest->get_balance(id)).as_object();
+        if (id_balance.if_contains("code") && id_balance.at("code") == "200000") {
+            balances.push_back(static_cast<std::pair<std::basic_string<char>, std::basic_string<char>>>(std::pair{
+                    id_balance.at("data").at("currency").as_string(),
+                    id_balance.at("data").at("available").as_string()
+            }));
+        }
+        auto full_balance = json::serialize(json::value{{"B", json::array{json::array{balances}}}});
+        balance_channel->offer(full_balance);
+        BOOST_LOG_TRIVIAL(trace) << "Sent balances to core: " << full_balance;
+    }
+}
+
+/// \brief подключиться к публичному вебсокету Kucoin
 void connect_to_public_ws() {
     auto public_bullet = bullet_handler(kucoin_rest->get_public_bullet());
     kucoin_public_ws = std::make_shared<KucoinWS>(ioc, public_bullet, orderbook_ws_handler);
 }
 
+/// \brief подключиться к приватному вебсокету Kucoin
 void connect_to_private_ws() {
     auto private_bullet = bullet_handler(kucoin_rest->get_private_bullet());
     kucoin_private_ws = std::make_shared<KucoinWS>(ioc, private_bullet, balance_ws_handler);
 }
 
+/// \brief Пропинговать вебсокеты (kucoin_public_ws, kucoin_private_ws)
 void ping_ws() {
     using namespace std::literals::chrono_literals;
 
@@ -298,140 +314,116 @@ void ping_ws() {
     }
 }
 
-// Функция оформляет сообщения для логов, т.е. создает json определенного формата
+/// \brief Оформлить сообщения для логов, создание строки json
+/// фугкция создает json определенного формата
+/// \param type тип ошибки: i - information, e - error
+/// \param error_source где произошла ошибка, по мнению шлюза
+/// \param message сообщение об ошибке
+/// \return string, оформленный json, с дополнительными полями (timestamp, название биржи)
 std::string formulate_log_message(char type, char error_source, int code,
                                   std::basic_string<char, std::char_traits<char>, std::allocator<char>> message) {
-    return json::serialize(json::value{
-            { "t", std::chrono::duration_cast<std::chrono::seconds>(
-                    std::chrono::system_clock::now().time_since_epoch()).count()},
-            { "T", type},
-            { "p", error_source},
-            { "n", exchange_name},
-            { "c", code},
-            { "e", message}
-    });
+    return json::serialize(json::value{{"t", std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count()},
+                                       {"T", type},
+                                       {"p", error_source},
+                                       {"n", config->exchange.name},
+                                       {"c", code},
+                                       {"e", message}});
 }
 
-// Обработчик сообщения, содержащего информацию для подключения к Kucoin websocket
-Bullet bullet_handler(const std::string& message)
-{
+/// \brief Обработчик сообщения, содержащего информацию для подключения к Kucoin websocket
+/// \param message строка json, полученная из Kucoin REST API
+/// \return Bullet, структура, содержащая поля json
+Bullet bullet_handler(const std::string &message) {
     auto object = json::parse(message).as_object();
     auto result = Bullet{};
 
     BOOST_LOG_TRIVIAL(trace) << object;
 
-    if (object.if_contains("code") &&
-        object.at("code") == "200000")
-    {
+    if (object.if_contains("code") && object.at("code") == "200000") {
         Uri uri = Uri::Parse(std::string(object.at("data").at("instanceServers").at(0).at("endpoint").as_string()));
-        result = Bullet{
-                std::string(object.at("data").at("token").as_string()),
-                uri.Host,
-                uri.Path,
-                object.at("data").at("instanceServers").at(0).at("pingInterval").as_int64(),
-                object.at("data").at("instanceServers").at(0).at("pingTimeout").as_int64()
-        };
+        result = Bullet{std::string(object.at("data").at("token").as_string()), uri.Host, uri.Path,
+                        object.at("data").at("instanceServers").at(0).at("pingInterval").as_int64(),
+                        object.at("data").at("instanceServers").at(0).at("pingTimeout").as_int64()};
     }
 
     return result;
 }
 
 
-// Обработчик websocket, оформляет и отправляет сообщения с ордербуком в ядром
-void orderbook_ws_handler(const std::string& message)
-{
-
+/// \brief Обработчик websocket, оформляет и отправляет сообщения с ордербуком в ядром
+/// \param message строка json с ордербуком, полученным по kucoin websocket
+void orderbook_ws_handler(const std::string &message) {
     BOOST_LOG_TRIVIAL(trace) << "Received message in private ws_stream handler: " << message;
     auto object = json::parse(message).as_object();
 
-    if (object.at("type").as_string() == "welcome" ||
-        object.at("type").as_string() == "ack" ||
-        object.at("type").as_string() == "pong") return;
+    if (object.at("type").as_string() == "welcome" || object.at("type").as_string() == "ack" ||
+        object.at("type").as_string() == "pong")
+        return;
 
-    if (object.if_contains("subject") &&
-        object.at("subject").as_string() == "trade.ticker")
-    {
-        orderbook_channel->offer(json::serialize(json::value{
-                { "u", object.at("data").at("sequence") },
-                { "s", "BTC-USDT"},
-                { "b", object.at("data").at("bestBid") },
-                { "B", object.at("data").at("bestBidSize") },
-                { "a", object.at("data").at("bestAsk") },
-                { "A", object.at("data").at("bestAskSize") },
-                { "T", std::to_string(time(nullptr)) },
-                { "exchange", exchange_name}
-        }));
-    }
-    else {
+    if (object.if_contains("subject") && object.at("subject").as_string() == "trade.ticker") {
+        orderbook_channel->offer(json::serialize(json::value{{"u",        object.at("data").at("sequence")},
+                                                             {"s",        "BTC-USDT"},
+                                                             {"b",        object.at("data").at("bestBid")},
+                                                             {"B",        object.at("data").at("bestBidSize")},
+                                                             {"a",        object.at("data").at("bestAsk")},
+                                                             {"A",        object.at("data").at("bestAskSize")},
+                                                             {"T",        std::to_string(time(nullptr))},
+                                                             {"exchange", config->exchange.name}}));
+    } else {
         BOOST_LOG_TRIVIAL(error) << "Unexpected message: " << message;
-        logs_channel->offer(formulate_log_message(
-                'e', 'g', 0, "Unexpected message on websocket: " + message
-        ));
+        logs_channel->offer(formulate_log_message('e', 'g', 0, "Unexpected message on websocket: " + message));
     }
 }
 
-// Обработчик websocket, оформляет и отправляет сообщения с балансом по ассету в ядром
-void balance_ws_handler(const std::string& message) {
+/// \brief Обработчик websocket, оформляет и отправляет сообщения с балансом по ассету в ядром
+/// \param message строка json с балансом, полученным по kucoin websocket
+void balance_ws_handler(const std::string &message) {
 
     auto object = json::parse(message).as_object();
 
-    if (object.at("type").as_string() == "welcome" ||
-        object.at("type").as_string() == "ack" ||
-        object.at("type").as_string() == "pong") return;
+    if (object.at("type").as_string() == "welcome" || object.at("type").as_string() == "ack" ||
+        object.at("type").as_string() == "pong")
+        return;
 
     BOOST_LOG_TRIVIAL(debug) << "Received message of balance: " << message;
 
-    if (object.if_contains("subject") &&
-        object.at("subject") == "account.balance") {
-        if (!object.at("data").at("total").as_string().empty() &&
+    if (object.if_contains("subject") && object.at("subject") == "account.balance") {
+        if (!object.at("data").at("available").as_string().empty() &&
             !object.at("data").at("currency").as_string().empty()) {
-            auto balance = json::serialize(json::value{
-                    {"B", json::array(
-                            {
-                                    json::value {
-                                            {"a", object.at("data").at("currency").as_string()},
-                                            {"f", object.at("data").at("total").as_string()}
-                                    }
-                            }
-                    )}
-            });
+            auto balance = json::serialize(json::value{{"B", json::array(
+                    {json::value{{"a", object.at("data").at("currency").as_string()},
+                                 {"f", object.at("data").at("available").as_string()}}})}});
             balance_channel->offer(balance);
             BOOST_LOG_TRIVIAL(trace) << "Sent balance to core: " << balance;
         }
-    }
-    else {
+    } else {
         BOOST_LOG_TRIVIAL(error) << "Unexpected message: " << message;
-        logs_channel->offer(formulate_log_message(
-                'e', 'g', 0, "Unexpected message on websocket: " + message
-        ));
+        logs_channel->offer(formulate_log_message('e', 'g', 0, "Unexpected message on websocket: " + message));
     }
 }
 
 
-// Обработчик сообщений из aeron на выставление и отмену ордеров (BTCU-SDT)
-// добавляет ордера в очередь, которые отсылаются в главном цикле
-void aeron_orders_handler(std::string_view message)
-{
+/// \brief Обработчик сообщений из aeron на выставление и отмену ордеров (BTCU-SDT)
+/// добавляет ордера в очередь, которые отсылаются в главном цикле
+/// \param message string_view, строка json с ордером, полученным от ядра
+void aeron_orders_handler(std::string_view message) {
     BOOST_LOG_TRIVIAL(debug) << "Received message in aeron handler: " << message;
     orders_deque.push_back(std::string(message));
 }
 
-// обрабатывает строку с ордером в определенном формате, их присылает ядро
-void handle_order_message(const std::string& order_message) {
+/// \brief обрабатывает строку с ордером в определенном формате, их присылает ядро
+/// \param message string, строка json с ордером, полученным от ядра
+void handle_order_message(const std::string &order_message) {
     auto object = json::parse(order_message).as_object();
     std::string result{};
 
-    if (object.at("a") == "+" && object.at("S") == "BTC-USDT")
-    {
+    if (object.at("a") == "+" && object.at("S") == "BTC-USDT") {
         auto id = std::to_string(get_unix_timestamp());
-        result = kucoin_rest->send_order(
-                id,
-                "BTC-USDT",
-                object.at("s") == "BUY" ? "buy" : "sell",
-                object.at("t") == "LIMIT" ? "limit" : "market",
-                format_size_precision_btc(std::string(object.at("q").as_string())),
-                format_price_precision(std::string(object.at("p").as_string()))
-        );
+        result = kucoin_rest->send_order(id, "BTC-USDT", object.at("s") == "BUY" ? "buy" : "sell",
+                                         object.at("t") == "LIMIT" ? "limit" : "market",
+                                         format_size_precision_btc(std::string(object.at("q").as_string())),
+                                         format_price_precision(std::string(object.at("p").as_string())));
 
         BOOST_LOG_TRIVIAL(debug) << "Sent request to create order (id" << id << ")";
         BOOST_LOG_TRIVIAL(debug) << "Result: " << result;
@@ -444,10 +436,11 @@ void handle_order_message(const std::string& order_message) {
             } else if (object.at("s") == "SELL") {
                 sell_orders.push_back(orderId);
             }
+        // Если баланс недостаточный, посылаю ядру текущий баланс
+        } else if (result_object.at("code") == "200004") {
+            get_balance();
         }
-    }
-    else if (object.at("a") == "-" && object.at("S") == "BTC-USDT")
-    {
+    } else if (object.at("a") == "-" && object.at("S") == "BTC-USDT") {
         std::string id{};
 
         if (object.at("s") == "BUY" && !buy_orders.empty()) {
@@ -464,38 +457,43 @@ void handle_order_message(const std::string& order_message) {
             BOOST_LOG_TRIVIAL(debug) << "Result: " << result;
         }
         return;
-    }
-    else
-    {
+    } else {
         BOOST_LOG_TRIVIAL(error) << "Unexpected order message: " << order_message;
-        logs_channel->offer(formulate_log_message(
-                'e', 'c', 0, "Unexpected message from core: " + order_message
-        ));
+        logs_channel->offer(formulate_log_message('e', 'c', 0, "Unexpected message from core: " + order_message));
     }
 }
 
-// Форматирует цену BTC, округляет до десятых
+/// \brief Форматирует цену BTC, округляет до десятых
+/// функция просто обрезает лишние символы
+/// \param price string, цена, которую нужно округлить
+/// \return string, форматированная цена
 std::string format_price_precision(std::string price) {
     price.resize(7, '0');
     return price;
 }
 
-//            "baseIncrement": "0.00000001",
-//            "quoteIncrement": "0.000001",
-// Форматирует объем BTC
-std::string format_size_precision_btc(std::string price) {
-    price.resize(8, '0');
-    return price;
+
+/// \brief Форматирует объем BTC
+/// функция просто обрезает лишние символы
+/// \param size string, объем, который нужно округлить
+/// \return string, форматированная цена
+std::string format_size_precision_btc(std::string size) {
+    size.resize(8, '0');
+    return size;
 }
 
-// Форматирует объем USDT
-std::string format_size_precision_usdt(std::string price) {
-    price.resize(10, '0');
-    return price;
+
+/// \brief Форматирует объем USDT
+/// функция просто обрезает лишние символы
+/// \param size string, объем, который нужно округлить
+/// \return string, форматированная цена
+std::string format_size_precision_usdt(std::string size) {
+    size.resize(10, '0');
+    return size;
 }
 
-void sigint_handler(int)
-{
+/// \brief обработчик прерывания
+void sigint_handler(int) {
     running = false;
 }
 

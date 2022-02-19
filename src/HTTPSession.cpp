@@ -35,7 +35,6 @@ std::string HTTPSession::request(http::verb method, const std::string &target,
     if (!body.empty())
         req.body() = body;
 
-
     // Отправка запроса
     http::write(*tcp_stream, req);
 //    std::cout << req << std::endl;
