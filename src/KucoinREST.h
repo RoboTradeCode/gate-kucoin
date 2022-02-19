@@ -31,6 +31,8 @@ class KucoinREST
 public:
     explicit KucoinREST(boost::asio::io_context& ioc, std::string api_key, std::string passphrase, std::string secret_key);
 
+    bool reconnect(boost::asio::io_context &ioc);
+
     std::string get_active_orders();
 
     std::string get_balance(const std::string& id);
