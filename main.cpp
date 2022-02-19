@@ -282,16 +282,17 @@ void enter_main_loop() {
 /// Выполняет много запросов к API, если указано много аккаунтов (запрос на каждый аккаунт)
 void get_balance() {
     auto ids{config->account.ids};
-    std::vector<std::pair<std::string, std::string>> balances{};
+    std::vector<json::value> balances{};
     for (auto id : ids) {
-        auto id_balance = json::parse(kucoin_rest->get_balance(id)).as_object();
+        auto balance_message = kucoin_rest->get_balance(id);
+        BOOST_LOG_TRIVIAL(trace) << balance_message;
+        auto id_balance = json::parse(balance_message).as_object();
         if (id_balance.if_contains("code") && id_balance.at("code") == "200000") {
-            balances.push_back(static_cast<std::pair<std::basic_string<char>, std::basic_string<char>>>(std::pair{
-                    id_balance.at("data").at("currency").as_string(),
-                    id_balance.at("data").at("available").as_string()
-            }));
+            balances.push_back(json::value{{id_balance.at("data").at("currency").as_string(),
+                                 id_balance.at("data").at("available").as_string()
+                                }});
         }
-        auto full_balance = json::serialize(json::value{{"B", json::array{json::array{balances}}}});
+        auto full_balance = json::serialize(json::value{{"B", balances}});
         balance_channel->offer(full_balance);
         BOOST_LOG_TRIVIAL(trace) << "Sent balances to core: " << full_balance;
     }
