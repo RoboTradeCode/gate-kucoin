@@ -1,15 +1,12 @@
 //
-// Created by qod on 03.02.2022.
+// Created by qod on 02.02.2022.
 //
 
-#include "Uri.h"
+#include "KucoinDataclasses.h"
 
-#include <string>
-#include <algorithm>    // find
+#include <utility>
 
-
-Uri Uri::Parse(const std::string &uri)
-{
+Uri Uri::Parse(const std::string &uri) {
 
     Uri result;
 
@@ -32,7 +29,7 @@ Uri Uri::Parse(const std::string &uri)
         std::string prot = &*(protocolEnd);
         if ((prot.length() > 3) && (prot.substr(0, 3) == "://"))
         {
-            result.Protocol = std::string(protocolStart, protocolEnd);
+            result.protocol = std::string(protocolStart, protocolEnd);
             protocolEnd += 3;   //      ://
         }
         else
@@ -49,25 +46,28 @@ Uri Uri::Parse(const std::string &uri)
                                    (pathStart != uriEnd) ? pathStart : queryStart,
                                    ':');  // check for port
 
-    result.Host = std::string(hostStart, hostEnd);
+    result.host = std::string(hostStart, hostEnd);
 
     // port
     if ((hostEnd != uriEnd) && ((&*(hostEnd))[0] == ':'))  // we have a port
     {
         hostEnd++;
         iterator_t portEnd = (pathStart != uriEnd) ? pathStart : queryStart;
-        result.Port = std::string(hostEnd, portEnd);
+        result.port = std::string(hostEnd, portEnd);
     }
 
     // path
     if (pathStart != uriEnd)
-        result.Path = std::string(pathStart, queryStart);
+        result.path = std::string(pathStart, queryStart);
 
     // query
     if (queryStart != uriEnd)
-        result.QueryString = std::string(queryStart, uri.end());
+        result.queryString = std::string(queryStart, uri.end());
 
     return result;
 
 }
 
+Bullet::Bullet(std::string token, std::string host, std::string path, int64_t pingInterval, int64_t pingTimeout) :
+    token(std::move(token)), host(std::move(host)), path(std::move(path)),
+    pingInterval(pingInterval), pingTimeout(pingTimeout) {}

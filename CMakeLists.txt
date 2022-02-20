@@ -3,7 +3,7 @@ project(kucoin_gateway)
 
 set(CMAKE_CXX_STANDARD 20)
 
-set(LIB_AERON /home/ubuntu/aeron/)
+set(LIB_AERON /home/qod/Projects/libs/aeron)
 
 
 find_package(Boost 1.78.0 REQUIRED COMPONENTS log)
@@ -15,7 +15,7 @@ include_directories(${LIB_AERON}/aeron-client/src/main/cpp)
 #include(libs/aeron_cpp/CMakeLists.txt)
 
 add_executable(
-        main
+        ${PROJECT_NAME}
 
         main.cpp
 
@@ -23,6 +23,9 @@ add_executable(
         libs/aeron_cpp/src/Publisher.h
         libs/aeron_cpp/src/Subscriber.cpp
         libs/aeron_cpp/src/Subscriber.h
+
+        libs/simdjson/simdjson.h
+        libs/simdjson/simdjson.cpp
 
         src/WSSession.cpp
         src/WSSession.h
@@ -36,17 +39,27 @@ add_executable(
 
         src/utils.cpp
         src/utils.h
-        src/kucoin_structures.cpp
-        src/kucoin_structures.h
-        src/Uri.cpp
-        src/Uri.h
+        src/KucoinDataclasses.cpp
+        src/KucoinDataclasses.h
 
         src/config/gate_config.h
         src/config/aeron_channel.h
         src/config/core_config.h
+        )
+
+add_executable(
+        temp
+
+        src/temp.cpp
+        src/KucoinDataclasses.cpp
+        src/KucoinDataclasses.h
+        libs/simdjson/simdjson.h
+        libs/simdjson/simdjson.cpp
+
 )
+
 target_link_libraries(
-        main
+        ${PROJECT_NAME}
         Threads::Threads
         OpenSSL::SSL
         Boost::log

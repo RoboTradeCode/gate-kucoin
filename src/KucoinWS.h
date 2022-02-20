@@ -5,7 +5,7 @@
 #include <boost/beast/core.hpp>
 #include <boost/json.hpp>
 #include "WSSession.h"
-#include "kucoin_structures.h"
+#include "KucoinDataclasses.h"
 
 namespace net = boost::asio;
 namespace json = boost::json;

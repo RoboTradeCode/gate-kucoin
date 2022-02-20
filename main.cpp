@@ -6,14 +6,11 @@
 #include <boost/log/core.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/log/expressions.hpp>
-#include <error.h>
-
 #include "src/KucoinWS.h"
-#include "src/kucoin_structures.h"
+#include "src/KucoinDataclasses.h"
 #include "src/KucoinREST.h"
 #include "libs/aeron_cpp/src/Publisher.h"
 #include "libs/aeron_cpp/src/Subscriber.h"
-#include "src/Uri.h"
 
 #include "src/config/gate_config.h"
 
@@ -103,7 +100,7 @@ int main() {
     // 0. Получение настроек конфигурации шлюза
     BOOST_LOG_TRIVIAL(info) << "Load configuration...";
     // Указать корректный путь до конфига
-    config = std::make_shared<gate_config>("kucoin_config.toml");
+    config = std::make_shared<gate_config>("../kucoin_config.toml");
 
     // 1. Соединение с каналами Aeron
     BOOST_LOG_TRIVIAL(info) << "Trying to connect with aeron...";
@@ -165,7 +162,7 @@ int main() {
                 'i', 'g', 0, "List of active orders: " + orders
                 ));
         // 7. Отменяю активные ордера
-        kucoin_rest->cancel_all_orders();
+//        kucoin_rest->cancel_all_orders();
     } else
         BOOST_LOG_TRIVIAL(info) << "No active orders";
 
@@ -192,7 +189,7 @@ int main() {
     return EXIT_SUCCESS;
 }
 
-/// \brief Главный цикл шлюза
+/// @brief Главный цикл шлюза
 ///
 /// Выполняется всё время работы шлюза.
 /// Выход из цикла означает завершение работы шлюза.
@@ -278,7 +275,7 @@ void enter_main_loop() {
     }
 }
 
-/// \brief Отправляет ядру актуальный баланс шлюза по всем аккаунтам, указанным в конфигурации
+/// @brief Отправляет ядру актуальный баланс шлюза по всем аккаунтам, указанным в конфигурации
 /// Выполняет много запросов к API, если указано много аккаунтов (запрос на каждый аккаунт)
 void get_balance() {
     auto ids{config->account.ids};
@@ -299,19 +296,19 @@ void get_balance() {
     }
 }
 
-/// \brief подключиться к публичному вебсокету Kucoin
+/// @brief подключиться к публичному вебсокету Kucoin
 void connect_to_public_ws() {
     auto public_bullet = bullet_handler(kucoin_rest->get_public_bullet());
     kucoin_public_ws = std::make_shared<KucoinWS>(ioc, public_bullet, orderbook_ws_handler);
 }
 
-/// \brief подключиться к приватному вебсокету Kucoin
+/// @brief подключиться к приватному вебсокету Kucoin
 void connect_to_private_ws() {
     auto private_bullet = bullet_handler(kucoin_rest->get_private_bullet());
     kucoin_private_ws = std::make_shared<KucoinWS>(ioc, private_bullet, balance_ws_handler);
 }
 
-/// \brief Пропинговать вебсокеты (kucoin_public_ws, kucoin_private_ws)
+/// @brief Пропинговать вебсокеты (kucoin_public_ws, kucoin_private_ws)
 void ping_ws() {
     using namespace std::literals::chrono_literals;
 
@@ -328,12 +325,12 @@ void ping_ws() {
     }
 }
 
-/// \brief Оформлить сообщения для логов, создание строки json
+/// @brief Оформлить сообщения для логов, создание строки json
 /// фугкция создает json определенного формата
-/// \param type тип ошибки: i - information, e - error
-/// \param error_source где произошла ошибка, по мнению шлюза
-/// \param message сообщение об ошибке
-/// \return string, оформленный json, с дополнительными полями (timestamp, название биржи)
+/// @param type тип ошибки: i - information, e - error
+/// @param error_source где произошла ошибка, по мнению шлюза
+/// @param message сообщение об ошибке
+/// @return string, оформленный json, с дополнительными полями (timestamp, название биржи)
 std::string formulate_log_message(char type, char error_source, int code,
                                   std::basic_string<char, std::char_traits<char>, std::allocator<char>> message) {
     return json::serialize(json::value{{"t", std::chrono::duration_cast<std::chrono::seconds>(
@@ -345,28 +342,28 @@ std::string formulate_log_message(char type, char error_source, int code,
                                        {"e", message}});
 }
 
-/// \brief Обработчик сообщения, содержащего информацию для подключения к Kucoin websocket
-/// \param message строка json, полученная из Kucoin REST API
-/// \return Bullet, структура, содержащая поля json
+/// @brief Обработчик сообщения, содержащего информацию для подключения к Kucoin websocket
+/// @param message строка json, полученная из Kucoin REST API
+/// @return Bullet, структура, содержащая поля json
 Bullet bullet_handler(const std::string &message) {
     auto object = json::parse(message).as_object();
-    auto result = Bullet{};
+    std::unique_ptr<Bullet> result;
 
     BOOST_LOG_TRIVIAL(trace) << object;
 
     if (object.if_contains("code") && object.at("code") == "200000") {
         Uri uri = Uri::Parse(std::string(object.at("data").at("instanceServers").at(0).at("endpoint").as_string()));
-        result = Bullet{std::string(object.at("data").at("token").as_string()), uri.Host, uri.Path,
+        result = std::make_unique<Bullet>(std::string(object.at("data").at("token").as_string()), uri.host, uri.path,
                         object.at("data").at("instanceServers").at(0).at("pingInterval").as_int64(),
-                        object.at("data").at("instanceServers").at(0).at("pingTimeout").as_int64()};
+                        object.at("data").at("instanceServers").at(0).at("pingTimeout").as_int64());
     }
 
-    return result;
+    return *result;
 }
 
 
-/// \brief Обработчик websocket, оформляет и отправляет сообщения с ордербуком в ядром
-/// \param message строка json с ордербуком, полученным по kucoin websocket
+/// @brief Обработчик websocket, оформляет и отправляет сообщения с ордербуком в ядром
+/// @param message строка json с ордербуком, полученным по kucoin websocket
 void orderbook_ws_handler(const std::string &message) {
     BOOST_LOG_TRIVIAL(trace) << "Received message in private ws_stream handler: " << message;
     auto object = json::parse(message).as_object();
@@ -390,8 +387,8 @@ void orderbook_ws_handler(const std::string &message) {
     }
 }
 
-/// \brief Обработчик websocket, оформляет и отправляет сообщения с балансом по ассету в ядром
-/// \param message строка json с балансом, полученным по kucoin websocket
+/// @brief Обработчик websocket, оформляет и отправляет сообщения с балансом по ассету в ядром
+/// @param message строка json с балансом, полученным по kucoin websocket
 void balance_ws_handler(const std::string &message) {
 
     auto object = json::parse(message).as_object();
@@ -418,16 +415,16 @@ void balance_ws_handler(const std::string &message) {
 }
 
 
-/// \brief Обработчик сообщений из aeron на выставление и отмену ордеров (BTCU-SDT)
+/// @brief Обработчик сообщений из aeron на выставление и отмену ордеров (BTC-USDT)
 /// добавляет ордера в очередь, которые отсылаются в главном цикле
-/// \param message string_view, строка json с ордером, полученным от ядра
+/// @param message string_view, строка json с ордером, полученным от ядра
 void aeron_orders_handler(std::string_view message) {
     BOOST_LOG_TRIVIAL(debug) << "Received message in aeron handler: " << message;
-    orders_deque.push_back(std::string(message));
+    orders_deque.emplace_back(message);
 }
 
-/// \brief обрабатывает строку с ордером в определенном формате, их присылает ядро
-/// \param message string, строка json с ордером, полученным от ядра
+/// @brief обрабатывает строку с ордером в определенном формате, их присылает ядро
+/// @param message string, строка json с ордером, полученным от ядра
 void handle_order_message(const std::string &order_message) {
     auto object = json::parse(order_message).as_object();
     std::string result{};
@@ -477,36 +474,36 @@ void handle_order_message(const std::string &order_message) {
     }
 }
 
-/// \brief Форматирует цену BTC, округляет до десятых
+/// @brief Форматирует цену BTC, округляет до десятых
 /// функция просто обрезает лишние символы
-/// \param price string, цена, которую нужно округлить
-/// \return string, форматированная цена
+/// @param price string, цена, которую нужно округлить
+/// @return string, форматированная цена
 std::string format_price_precision(std::string price) {
     price.resize(7, '0');
     return price;
 }
 
 
-/// \brief Форматирует объем BTC
+/// @brief Форматирует объем BTC
 /// функция просто обрезает лишние символы
-/// \param size string, объем, который нужно округлить
-/// \return string, форматированная цена
+/// @param size string, объем, который нужно округлить
+/// @return string, форматированная цена
 std::string format_size_precision_btc(std::string size) {
     size.resize(8, '0');
     return size;
 }
 
 
-/// \brief Форматирует объем USDT
+/// @brief Форматирует объем USDT
 /// функция просто обрезает лишние символы
-/// \param size string, объем, который нужно округлить
-/// \return string, форматированная цена
+/// @param size string, объем, который нужно округлить
+/// @return string, форматированная цена
 std::string format_size_precision_usdt(std::string size) {
     size.resize(10, '0');
     return size;
 }
 
-/// \brief обработчик прерывания
+/// @brief обработчик прерывания
 void sigint_handler(int) {
     running = false;
 }
