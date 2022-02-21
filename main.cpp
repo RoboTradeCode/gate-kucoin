@@ -109,7 +109,7 @@ int main() {
     balance_channel = std::make_shared<Publisher>(config->aeron.publishers.balance.channel,
                                                   config->aeron.publishers.balance.stream_id);
     logs_channel = std::make_shared<Publisher>(config->aeron.publishers.logs.channel,
-                                               config->aeron.publishers.logs.stream_id, 1400);
+                                               config->aeron.publishers.logs.stream_id, 2500);
 
     core_channel = std::make_shared<Subscriber>(aeron_orders_handler,
                                                 config->aeron.subscribers.core.channel,

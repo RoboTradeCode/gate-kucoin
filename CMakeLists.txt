@@ -45,7 +45,7 @@ add_executable(
         src/config/gate_config.h
         src/config/aeron_channel.h
         src/config/core_config.h
-        )
+        src/json_parser/JsonParser.cpp src/json_parser/JsonParser.h src/json_parser/Exceptions.h)
 
 add_executable(
         temp
@@ -56,7 +56,7 @@ add_executable(
         libs/simdjson/simdjson.h
         libs/simdjson/simdjson.cpp
 
-)
+        src/json_parser/JsonParser.cpp src/json_parser/JsonParser.h src/json_parser/Exceptions.h)
 
 target_link_libraries(
         ${PROJECT_NAME}

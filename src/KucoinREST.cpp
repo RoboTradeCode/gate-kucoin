@@ -46,6 +46,18 @@ std::string KucoinREST::get_balance(const std::string& id)
 }
 
 
+std::string KucoinREST::get_accounts() {
+    auto endpoint = "/api/v1/accounts";
+    auto method = http::verb::get;
+
+    auto signature_params = get_signatures(method, endpoint, {});
+
+    return https_session->request(method,
+                                  endpoint,
+                                  signature_params);
+}
+
+
 std::string KucoinREST::get_public_bullet()
 {
     auto endpoint = PUBLIC_BULLET_ENDPOINT;
