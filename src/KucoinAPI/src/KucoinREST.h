@@ -4,7 +4,7 @@
 #define KUCOIN_GATEWAY_KUCOINREST_H
 
 
-#include "HTTPSession.h"
+#include "../../HTTPSession.h"
 #include <boost/json.hpp>
 
 
@@ -29,7 +29,7 @@ class KucoinREST
     get_signatures(http::verb method, const std::string& target, const std::string& body);
 
 public:
-    explicit KucoinREST(boost::asio::io_context& ioc, std::string api_key, std::string passphrase, std::string secret_key);
+    explicit KucoinREST(boost::asio::io_context &ioc, std::string api_key, std::string passphrase, std::string secret_key);
 
     bool reconnect(boost::asio::io_context &ioc);
 

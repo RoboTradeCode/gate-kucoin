@@ -1,7 +1,7 @@
 #include "KucoinREST.h"
 
 
-KucoinREST::KucoinREST(boost::asio::io_context& ioc, std::string api_key, std::string passphrase, std::string secret_key)
+KucoinREST::KucoinREST(boost::asio::io_context &ioc, std::string api_key, std::string passphrase, std::string secret_key)
     : api_key(std::move(api_key)),
       passphrase(std::move(passphrase)),
       secret_key(std::move(secret_key))

@@ -6,9 +6,9 @@
 #include <boost/log/core.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/log/expressions.hpp>
-#include "src/KucoinWS.h"
-#include "src/KucoinDataclasses.h"
-#include "src/KucoinREST.h"
+#include "src/KucoinAPI/src/KucoinWS.h"
+#include "src/KucoinAPI/src/KucoinDataclasses.h"
+#include "src/KucoinAPI/src/KucoinREST.h"
 #include "libs/aeron_cpp/src/Publisher.h"
 #include "libs/aeron_cpp/src/Subscriber.h"
 
