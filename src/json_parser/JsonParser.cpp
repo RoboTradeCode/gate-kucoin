@@ -13,7 +13,7 @@ Json::Parser::Parser() {
 }
 
 void
-Json::Parser::follow_path(Json::Parser::Error &ec, simdjson::simdjson_result<simdjson::dom::element> &frame,
+Json::Parser::follow_path(Error &ec, simdjson::simdjson_result<simdjson::dom::element> &frame,
                         const std::vector<std::variant<size_t, std::string>> &path) {
     frame = current_json;
     for (const auto& jsonStep : path) {
@@ -69,6 +69,58 @@ void Json::Parser::load_json_from_file(Error &ec, const std::basic_string<char> 
 
 void Json::Parser::change_root_element(Error &ec, const std::vector<std::variant<size_t, std::string>> &path) {
     return follow_path(ec, current_json, path);
+}
+
+std::string Json::Parser::get_string_field(Error &ec, const std::vector<std::variant<size_t, std::string>> &path) {
+    simdjson::simdjson_result<simdjson::dom::element> element;
+    // проследую пути, вглубь JSON
+    // в результате ожидаю получить конкретное поле внутри JSON
+    follow_path(ec, element, path);
+
+    if (ec.ec == SUCCESS) {
+
+        // Пытаюсь преобразовать полученное поле к целевому типу
+        auto retrieved_value = element.get_string();
+
+
+        // если получилось преобразовать к целевому типу...
+        if (simdjson::SUCCESS == retrieved_value.error()) {
+            ec.ec = SUCCESS;
+            // Возвращаю полученное значение
+            return std::string(retrieved_value.value());
+        } else {
+            ec.ec = INVALID_TYPE;
+            ec.message = "Failed converting JSON field";
+        }
+    }
+    // не удалось получить поле
+    return {};
+}
+
+double Json::Parser::get_float_field(Json::Error &ec, const std::vector<std::variant<size_t, std::string>> &path) {
+    simdjson::simdjson_result<simdjson::dom::element> element;
+    // проследую пути, вглубь JSON
+    // в результате ожидаю получить конкретное поле внутри JSON
+    follow_path(ec, element, path);
+
+    if (ec.ec == SUCCESS) {
+
+        // Пытаюсь преобразовать полученное поле к целевому типу
+        auto retrieved_value = element.get_double();
+
+
+        // если получилось преобразовать к целевому типу...
+        if (simdjson::SUCCESS == retrieved_value.error()) {
+            ec.ec = SUCCESS;
+            // Возвращаю полученное значение
+            return retrieved_value.value();
+        } else {
+            ec.ec = INVALID_TYPE;
+            ec.message = "Failed converting JSON field";
+        }
+    }
+    // не удалось получить поле
+    return {};
 }
 
 

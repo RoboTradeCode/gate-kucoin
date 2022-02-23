@@ -18,9 +18,8 @@ class HTTPSession
 {
     std::string host;
     std::shared_ptr<beast::ssl_stream<beast::tcp_stream>> tcp_stream;
-
 public:
-    explicit HTTPSession(const std::string& host, const std::string& port, net::io_context& ioc);
+    explicit HTTPSession(net::io_context &ioc, const std::string &host, const std::string &port);
 
     std::string request(http::verb method, const std::string &target,
                         const std::vector<std::pair<std::string, std::string>> &params = {},

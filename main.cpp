@@ -8,7 +8,7 @@
 #include <boost/log/expressions.hpp>
 #include "src/KucoinAPI/src/KucoinWS.h"
 #include "src/KucoinAPI/src/KucoinDataclasses.h"
-#include "src/KucoinAPI/src/KucoinREST.h"
+#include "src/KucoinAPI/src/KucoinHTTP.h"
 #include "libs/aeron_cpp/src/Publisher.h"
 #include "libs/aeron_cpp/src/Subscriber.h"
 
@@ -64,7 +64,7 @@ std::list<std::string> orders_deque{};
 std::atomic<bool> running(true);
 std::shared_ptr<KucoinWS> kucoin_public_ws;
 std::shared_ptr<KucoinWS> kucoin_private_ws;
-std::shared_ptr<KucoinREST> kucoin_rest;
+std::shared_ptr<KucoinHTTP> kucoin_rest;
 std::shared_ptr<Publisher> orderbook_channel;
 std::shared_ptr<Publisher> balance_channel;
 std::shared_ptr<Publisher> logs_channel;
@@ -119,7 +119,7 @@ int main() {
 
     // 2. Соединение с Kucoin REST API
     BOOST_LOG_TRIVIAL(info) << "Trying to connect to public websocket...";
-    kucoin_rest = std::make_shared<KucoinREST>(
+    kucoin_rest = std::make_shared<KucoinHTTP>(
             ioc,
             config->account.api_key,
             config->account.passphrase,
@@ -352,7 +352,7 @@ Bullet bullet_handler(const std::string &message) {
     BOOST_LOG_TRIVIAL(trace) << object;
 
     if (object.if_contains("code") && object.at("code") == "200000") {
-        Uri uri = Uri::Parse(std::string(object.at("data").at("instanceServers").at(0).at("endpoint").as_string()));
+        Uri uri = Uri::parse(std::string(object.at("data").at("instanceServers").at(0).at("endpoint").as_string()));
         result = std::make_unique<Bullet>(std::string(object.at("data").at("token").as_string()), uri.host, uri.path,
                         object.at("data").at("instanceServers").at(0).at("pingInterval").as_int64(),
                         object.at("data").at("instanceServers").at(0).at("pingTimeout").as_int64());

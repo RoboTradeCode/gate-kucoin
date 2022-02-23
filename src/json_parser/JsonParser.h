@@ -9,7 +9,19 @@
 
 namespace Json {
 
-    struct Error;
+    enum error_code {
+        SUCCESS,
+        FAILED_MEMORY_ALLOCATE,
+        FAILED_PARSING,
+        NOT_FOUND,
+        INVALID_TYPE,
+        UNEXPECTED_TYPE_IN_PATH
+    };
+
+    struct Error {
+        error_code ec;
+        std::string message;
+    };
 
 /// @brief Парсер JSON, настраивается на файл или строку и получает поля из неё. Работает в режиме dom.
 ///
@@ -21,20 +33,6 @@ namespace Json {
         simdjson::simdjson_result<simdjson::dom::element> current_json;
 
     public:
-
-        enum error_code {
-            SUCCESS,
-            FAILED_MEMORY_ALLOCATE,
-            FAILED_PARSING,
-            NOT_FOUND,
-            INVALID_TYPE,
-            UNEXPECTED_TYPE_IN_PATH
-        };
-
-        struct Error {
-            error_code ec;
-            std::string message;
-        };
 
         /// @brief Конструктор, инициализирует парсер dom
         Parser();
@@ -77,7 +75,7 @@ namespace Json {
         void change_root_element(Error &ec, const std::vector<std::variant<size_t, std::string>> &path);
 
         /// @brief Получить поле, которое находится внутри JSON
-        /// Для получения строки указать тип <const char *>
+        ///
         /// @param ec структура типа Parser::Error, в которую будет записана ошибка, или SUCCESS в случае успеха
         /// содержит два поля: ec и message. ec содержит значение enum Parser::error_code,  message содержит std::string
         /// с текстом ошибки
@@ -85,32 +83,18 @@ namespace Json {
         /// т.е. массив из std::string и size_t. std::string это название поля, size_t это индекс в массиве
         ///
         /// @result переменная типа std::string, полученная из JSON
-        template<typename Type>
-        Type parse_field(Error &ec, const std::vector<std::variant<size_t, std::string>> &path) {
-            simdjson::simdjson_result<simdjson::dom::element> element;
-            // проследую пути, вглубь JSON
-            // в результате ожидаю получить конкретное поле внутри JSON
-            follow_path(ec, element, path);
+        std::string get_string_field(Error &ec, const std::vector<std::variant<size_t, std::string>> &path);
 
-            if (ec.ec == SUCCESS) {
-
-                // Пытаюсь преобразовать полученное поле к целевому типу
-                auto retrieved_value = element.template get<Type>();
-
-
-                // если получилось преобразовать к целевому типу...
-                if (simdjson::SUCCESS == retrieved_value.error()) {
-                    ec.ec = SUCCESS;
-                    // Возвращаю полученное значение
-                    return retrieved_value.value();
-                } else {
-                    ec.ec = INVALID_TYPE;
-                    ec.message = "Failed converting JSON field";
-                }
-            }
-            // не удалось получить поле
-            return {};
-        }
+        /// @brief Получить поле, которое находится внутри JSON
+        ///
+        /// @param ec структура типа Parser::Error, в которую будет записана ошибка, или SUCCESS в случае успеха
+        /// содержит два поля: ec и message. ec содержит значение enum Parser::error_code,  message содержит std::string
+        /// с текстом ошибки
+        /// @param path путь до поля, включающий название поля. Задавать в формате {"field1", "array", 0, "result_field"}
+        /// т.е. массив из std::string и size_t. std::string это название поля, size_t это индекс в массиве
+        ///
+        /// @result переменная типа std::string, полученная из JSON
+        double get_float_field(Error &ec, const std::vector<std::variant<size_t, std::string>> &path);
     };
 
 

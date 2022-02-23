@@ -1,7 +1,7 @@
 
 #include "HTTPSession.h"
 
-HTTPSession::HTTPSession(const std::string& host, const std::string& port, net::io_context& ioc)
+HTTPSession::HTTPSession(net::io_context &ioc, const std::string &host, const std::string &port)
     : host(host)
 {
     ssl::context ctx{ ssl::context::tls_client };

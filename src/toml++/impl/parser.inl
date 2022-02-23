@@ -2541,7 +2541,7 @@ TOML_IMPL_NAMESPACE_START
 
 			// check if it begins with some control character
 			// (note that this will also fail for whitespace but we're assuming we've
-			// called consume_leading_whitespace() before calling parse_value())
+			// called consume_leading_whitespace() before calling parse_field())
 			if TOML_UNLIKELY(is_control_character(*cp))
 				set_error_and_return_default("unexpected control character"sv);
 

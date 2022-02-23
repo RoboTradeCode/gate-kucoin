@@ -30,16 +30,16 @@ passphrase = "j4J4jdo4dDc"
 # или
 # ["aeron:ipc", 111]
 
-orderbook = ["aeron:udp?control=172.31.14.205:40456|control-mode=dynamic", 1001]
+orderbook = ["aeron:ipc", 111]
 # настройки publishers осуществляющего отправку баланса
 #        balance = ["aeron:ipc", 111]
-balance = ["aeron:udp?control=172.31.14.205:40456|control-mode=dynamic", 1002]
+balance = ["aeron:ipc", 111]
 
 # настройки publishers осуществляющего отправку логов
 # ["channel", channel_id]
-logs = ["aeron:udp?endpoint=3.66.183.27:44444", 1001]
+logs = ["aeron:ipc", 111]
 # Настройки относящиеся к приему данных.
 [aeron.subscribers]
 # канал в котором приходят команды от ядра.
 #        core = ["aeron:udp?endpoint=54.248.171.18:20121", 555]
-core = ["aeron:udp?endpoint=172.31.14.205:40457|control=172.31.14.205:40456", 1003]
+core = ["aeron:ipc", 112]

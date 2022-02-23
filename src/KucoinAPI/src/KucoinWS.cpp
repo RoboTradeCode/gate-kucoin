@@ -1,9 +1,8 @@
 #include "KucoinWS.h"
 
-KucoinWS::KucoinWS(net::io_context& ioc, const Bullet& bullet, const std::function<void(std::string)>& event_handler)
+KucoinWS::KucoinWS(net::io_context& ioc, std::pair<std::string, std::string> url, const std::function<void(std::string)>& event_handler)
 {
-    std::string target = bullet.path + "?token=" + bullet.token;
-    ws = std::make_shared<WSSession>(bullet.host, "443", target, ioc, event_handler);
+    ws = std::make_shared<WSSession>(url.first, "443", url.second, ioc, event_handler);
     ws->async_read();
 }
 

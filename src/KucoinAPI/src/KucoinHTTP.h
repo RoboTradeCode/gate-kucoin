@@ -1,7 +1,7 @@
 // todo move Kucoin classes to separate dir
 
-#ifndef KUCOIN_GATEWAY_KUCOINREST_H
-#define KUCOIN_GATEWAY_KUCOINREST_H
+#ifndef KUCOIN_GATEWAY_KUCOINHTTP_H
+#define KUCOIN_GATEWAY_KUCOINHTTP_H
 
 
 #include "../../HTTPSession.h"
@@ -10,13 +10,7 @@
 
 namespace json = boost::json;
 
-class KucoinREST
-{
-    std::shared_ptr<HTTPSession> https_session;
-    std::string api_key;
-    std::string passphrase;
-    std::string secret_key;
-
+namespace Kucoin {
     const std::string HOST = "api.kucoin.com";
     const std::string PORT = "443";
 
@@ -24,12 +18,27 @@ class KucoinREST
     const std::string PUBLIC_BULLET_ENDPOINT = "/api/v1/bullet-public";
     const std::string PRIVATE_BULLET_ENDPOINT = "/api/v1/bullet-private";
     const std::string ORDERS_ENDPOINT = "/api/v1/orders";
+}
+class KucoinHTTP
+{
+    std::shared_ptr<KucoinHTTP> https_session;
+    std::string api_key;
+    std::string passphrase;
+    std::string secret_key;
+
+    std::shared_ptr<boost::asio::io_context> ioc;
+
 
     std::vector<std::pair<std::string, std::string>>
     get_signatures(http::verb method, const std::string& target, const std::string& body);
 
 public:
-    explicit KucoinREST(boost::asio::io_context &ioc, std::string api_key, std::string passphrase, std::string secret_key);
+
+    explicit KucoinHTTP(std::string api_key, std::string passphrase, std::string secret_key);
+
+    std::shared_ptr<boost::asio::io_context> get_ioc() {
+        return ioc;
+    }
 
     bool reconnect(boost::asio::io_context &ioc);
 
@@ -55,4 +64,4 @@ public:
 };
 
 
-#endif  // KUCOIN_GATEWAY_KUCOINREST_H
+#endif  // KUCOIN_GATEWAY_KUCOINHTTP_H

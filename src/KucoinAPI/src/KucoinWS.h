@@ -15,7 +15,7 @@ class KucoinWS
     std::shared_ptr<WSSession> ws;
 
 public:
-    explicit KucoinWS(boost::asio::io_context& ioc, const Bullet& bullet,
+    explicit KucoinWS(boost::asio::io_context& ioc, std::pair<std::string, std::string> url,
                       const std::function<void(std::string)>& event_handler);
     // todo add functions for subscribe to specific channel
 

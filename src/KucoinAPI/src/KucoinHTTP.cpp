@@ -1,16 +1,16 @@
-#include "KucoinREST.h"
+#include "KucoinHTTP.h"
 
 
-KucoinREST::KucoinREST(boost::asio::io_context &ioc, std::string api_key, std::string passphrase, std::string secret_key)
+KucoinHTTP::KucoinHTTP(std::string api_key, std::string passphrase, std::string secret_key)
     : api_key(std::move(api_key)),
       passphrase(std::move(passphrase)),
       secret_key(std::move(secret_key))
 {
-    https_session = std::make_shared<HTTPSession>(HOST, PORT, ioc);
+    https_session = std::make_shared<HTTPSession>(ioc, HOST, PORT);
 }
 
 
-bool KucoinREST::reconnect(boost::asio::io_context &ioc) {
+bool KucoinHTTP::reconnect(boost::asio::io_context &ioc) {
     try {
         https_session = std::make_shared<HTTPSession>(HOST, PORT, ioc);
         return true;
@@ -21,7 +21,7 @@ bool KucoinREST::reconnect(boost::asio::io_context &ioc) {
 }
 
 
-std::string KucoinREST::get_active_orders()
+std::string KucoinHTTP::get_active_orders()
 {
     auto endpoint = ORDERS_ENDPOINT + "?status=active";
     auto method = http::verb::get;
@@ -33,7 +33,7 @@ std::string KucoinREST::get_active_orders()
                                   signature_params);
 }
 
-std::string KucoinREST::get_balance(const std::string& id)
+std::string KucoinHTTP::get_balance(const std::string& id)
 {
     auto endpoint = ACCOUNTS_ENDPOINT + '/' + id;
     auto method = http::verb::get;
@@ -46,7 +46,7 @@ std::string KucoinREST::get_balance(const std::string& id)
 }
 
 
-std::string KucoinREST::get_accounts() {
+std::string KucoinHTTP::get_accounts() {
     auto endpoint = "/api/v1/accounts";
     auto method = http::verb::get;
 
@@ -58,7 +58,7 @@ std::string KucoinREST::get_accounts() {
 }
 
 
-std::string KucoinREST::get_public_bullet()
+std::string KucoinHTTP::get_public_bullet()
 {
     auto endpoint = PUBLIC_BULLET_ENDPOINT;
     auto method = http::verb::post;
@@ -67,7 +67,7 @@ std::string KucoinREST::get_public_bullet()
                                   PUBLIC_BULLET_ENDPOINT);
 }
 
-std::string KucoinREST::get_private_bullet()
+std::string KucoinHTTP::get_private_bullet()
 {
     auto endpoint = PRIVATE_BULLET_ENDPOINT;
     auto method = http::verb::post;
@@ -79,7 +79,7 @@ std::string KucoinREST::get_private_bullet()
                                   signature_params);
 }
 
-std::string KucoinREST::send_order(
+std::string KucoinHTTP::send_order(
             std::string clientOid, 
             std::string symbol, 
             std::string side, 
@@ -114,7 +114,7 @@ std::string KucoinREST::send_order(
                                   params, body);
 }
 
-std::string KucoinREST::cancel_order(const std::string& orderId) {
+std::string KucoinHTTP::cancel_order(const std::string& orderId) {
     auto endpoint = ORDERS_ENDPOINT + '/' + orderId;
     auto method = http::verb::delete_;
 
@@ -125,7 +125,7 @@ std::string KucoinREST::cancel_order(const std::string& orderId) {
                                   signature_params);
 }
 
-std::string KucoinREST::cancel_all_orders() {
+std::string KucoinHTTP::cancel_all_orders() {
     auto endpoint = ORDERS_ENDPOINT;
     auto method = http::verb::delete_;
 
@@ -137,7 +137,7 @@ std::string KucoinREST::cancel_all_orders() {
 }
 
 std::vector<std::pair<std::string, std::string>>
-KucoinREST::get_signatures(http::verb method, const std::string& target, const std::string& body) {
+KucoinHTTP::get_signatures(http::verb method, const std::string& target, const std::string& body) {
 
     auto timestamp = std::to_string(get_unix_timestamp());
     auto method_as_string = std::string{to_string(method)};
