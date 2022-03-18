@@ -1,13 +1,13 @@
 # раздел содержит информацию относительно настроек биржы
 [exchange]
-# имя биржи, записывается в сообщениях, которые отправляет данный шлюз
-name = "kucoin"
+    # имя биржи, записывается в сообщениях, которые отправляет данный шлюз
+    name = "kucoin"
 
 # настройки аккаунта
 [account]
-api_key = "61d283fc48decd00016474cc"
-secret_key = "8dcb8034-02b7-4b66-936e-18b473f4e6cb"
-passphrase = "j4J4jdo4dDc"
+    api_key = "61d283fc48decd00016474cc"
+    secret_key = "8dcb8034-02b7-4b66-936e-18b473f4e6cb"
+    passphrase = "j4J4jdo4dDc"
 
     # id аккаунтов, которые используются для торговли
     # если аккаунтов будет больше, нужно будет указывать их все
@@ -23,23 +23,23 @@ passphrase = "j4J4jdo4dDc"
 
 # настройки транспортного уровня
 [aeron]
-# Настройки относящиеся к отправке данных
-[aeron.publishers]
-# настройки канала для publishers рассылающего market data
-# ["aeron:udp?control=172.31.14.205:40456|control-mode=dynamic", 111]
-# или
-# ["aeron:ipc", 111]
+    # Настройки относящиеся к отправке данных
+    [aeron.publishers]
+        # настройки канала для publishers рассылающего market data
+        # ["aeron:udp?control=172.31.14.205:40456|control-mode=dynamic", 111]
+        # или
+        # ["aeron:ipc", 111]
 
-orderbook = ["aeron:ipc", 111]
-# настройки publishers осуществляющего отправку баланса
-#        balance = ["aeron:ipc", 111]
-balance = ["aeron:ipc", 111]
+        orderbook = ["aeron:udp?control=172.31.14.205:40456|control-mode=dynamic", 1001]
+        # настройки publishers осуществляющего отправку баланса
+        #        balance = ["aeron:ipc", 111]
+        balance = ["aeron:udp?control=172.31.14.205:40456|control-mode=dynamic", 1002]
 
-# настройки publishers осуществляющего отправку логов
-# ["channel", channel_id]
-logs = ["aeron:ipc", 111]
-# Настройки относящиеся к приему данных.
-[aeron.subscribers]
-# канал в котором приходят команды от ядра.
-#        core = ["aeron:udp?endpoint=54.248.171.18:20121", 555]
-core = ["aeron:ipc", 112]
+        # настройки publishers осуществляющего отправку логов
+        # ["channel", channel_id]
+        logs = ["aeron:udp?endpoint=3.66.183.27:44444", 1001]
+    # Настройки относящиеся к приему данных.
+    [aeron.subscribers]
+        # канал в котором приходят команды от ядра.
+        #        core = ["aeron:udp?endpoint=54.248.171.18:20121", 555]
+        core = ["aeron:udp?endpoint=172.31.14.205:40457|control=172.31.14.205:40456", 1003]
