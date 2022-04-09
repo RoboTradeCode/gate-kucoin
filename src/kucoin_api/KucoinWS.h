@@ -1,10 +1,11 @@
+#pragma once
 #ifndef KUCOIN_GATEWAY_KUCOINPUBLIC_H
 #define KUCOIN_GATEWAY_KUCOINPUBLIC_H
 
 
 #include <boost/beast/core.hpp>
 #include <boost/json.hpp>
-#include "WSSession.h"
+#include "../network_cpp/WSSession.h"
 #include "kucoin_structures.h"
 
 namespace net = boost::asio;

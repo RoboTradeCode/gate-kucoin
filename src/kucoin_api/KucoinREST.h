@@ -4,7 +4,7 @@
 #define KUCOIN_GATEWAY_KUCOINREST_H
 
 
-#include "HTTPSession.h"
+#include "../network_cpp/HTTPSession.h"
 #include <boost/json.hpp>
 
 

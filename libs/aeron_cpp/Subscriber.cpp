@@ -1,9 +1,9 @@
-#include "includes/Subscriber.h"
+#include "Subscriber.h"
 #include <utility>
 
 /**
  * @param handler Callback для обработки каждого поступающего фрагмента
- * @param channel Канал Aeron. В общем случае для указания канала используется URI
+ * @param channel Канал aeron_cpp. В общем случае для указания канала используется URI
  * @param stream_id Уникальный идентификатор потока в канале. Значение 0 зарезервировано, его использовать нельзя
  */
 Subscriber::Subscriber(std::function<void (std::string)> callback, std::string channel, int32_t stream_id)

@@ -1,4 +1,4 @@
-#include "includes/KucoinREST.h"
+#include "KucoinREST.h"
 
 
 KucoinREST::KucoinREST(boost::asio::io_context& ioc, std::string api_key, std::string passphrase, std::string secret_key)
@@ -78,8 +78,7 @@ std::string KucoinREST::send_order(
     std::vector<std::pair<std::string, std::string>> params = {
                                                {"Content-Type", "application/json"},
                                                {"Accept", "application/json"},
-                                               {"Content-Length", std::to_string(body.length())},
-                                               {"Connection", "keep-alive"}
+                                               {"Content-Length", std::to_string(body.length())}
     };
 
     auto signature_params = get_signatures(method, endpoint, body);

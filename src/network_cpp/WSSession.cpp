@@ -1,4 +1,4 @@
-#include "includes/WSSession.h"
+#include "WSSession.h"
 
 void WSSession::on_read(beast::error_code ec, std::size_t bytes_transferred)
 {
@@ -49,7 +49,6 @@ WSSession::WSSession(std::string host, const std::string& port, const std::strin
             });
 
 //    timer.async_wait(tick);
-
     ws_stream->handshake(host, target);
 }
 

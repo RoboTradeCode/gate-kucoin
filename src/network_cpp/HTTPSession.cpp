@@ -1,5 +1,4 @@
-
-#include "includes/HTTPSession.h"
+#include "HTTPSession.h"
 
 HTTPSession::HTTPSession(const std::string& host, const std::string& port, net::io_context& ioc)
     : host(host)
@@ -25,6 +24,7 @@ std::string HTTPSession::request(http::verb method, const std::string &target,
 
     http::request<http::string_body> req{ method, target, 11 };
     req.set(http::field::host, host);
+    req.keep_alive(true);
 
 
     for (const auto& param : params) {
@@ -37,12 +37,17 @@ std::string HTTPSession::request(http::verb method, const std::string &target,
 
 
     // Отправка запроса
-    http::write(*tcp_stream, req);
-//    std::cout << req << std::endl;
+    try {
+        http::write(*tcp_stream, req);
+    //    std::cout << req << std::endl;
 
-    beast::flat_buffer buffer;
-    http::response<http::string_body> res;
-    http::read(*tcp_stream, buffer, res);
-
-    return res.body();
+        beast::flat_buffer buffer;
+        http::response<http::string_body> res;
+        http::read(*tcp_stream, buffer, res);
+        return res.body();
+    }
+    catch (...) {
+        std::cout << "Error in httpSession";
+        throw std::runtime_error("HttpsSession closed");
+    }
 }
